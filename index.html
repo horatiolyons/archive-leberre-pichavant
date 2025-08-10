@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lace Archive</title>
+  <style>
+    :root { --gap: 16px; }
+    html, body { margin:0; padding:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; color:#111; background:#fafafa; }
+    header { max-width: 1000px; margin: 0 auto; padding: 24px 16px; }
+    h1 { font-size: 1.8rem; margin: 0 0 8px; }
+    .sub { color:#555; font-size: .95rem; }
+    .bar { display:flex; gap:var(--gap); flex-wrap:wrap; align-items:center; margin-top: 16px; }
+    input[type="search"], select { padding:10px 12px; border:1px solid #ddd; border-radius:10px; background:#fff; flex: 1 1 220px; }
+    .count { color:#666; font-size:.9rem; margin-left:auto; }
+
+    main { max-width: 1000px; margin: 0 auto; padding: 8px 16px 48px; }
+    .grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(260px,1fr)); gap: var(--gap); }
+
+    .card { background:#fff; border:1px solid #eee; border-radius:16px; overflow:hidden; display:flex; flex-direction:column; }
+    .thumb { aspect-ratio: 4 / 3; object-fit: cover; width:100%; background:#f1f1f1; }
+    .body { padding:12px 14px 14px; display:flex; flex-direction:column; gap:6px; }
+    .title { font-weight:600; }
+    .meta { color:#666; font-size:.9rem; }
+    .desc { color:#333; font-size:.95rem; }
+    .tags { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+    .tag { font-size:.8rem; color:#444; background:#f3f3f3; border:1px solid #e8e8e8; padding:2px 8px; border-radius:999px; }
+
+    .gallery { display:flex; gap:8px; overflow:auto; padding: 0 14px 14px; }
+    .gallery img { height:80px; border-radius:10px; border:1px solid #eee; background:#f6f6f6; cursor: zoom-in; }
+
+    .empty { text-align:center; color:#777; padding:40px 12px; }
+
+    /* Lightbox */
+    .lightbox { position:fixed; inset:0; background: rgba(0,0,0,.85); display:none; align-items:center; justify-content:center; z-index: 999; }
+    .lightbox.open { display:flex; }
+    .lightbox img { max-width: 92vw; max-height: 92vh; border-radius: 8px; }
+    .lightbox .close { position:absolute; top:16px; right:16px; background:#fff; border:none; padding:8px 12px; border-radius:999px; cursor:pointer; }
+
+    footer { max-width: 1000px; margin: 0 auto; padding: 16px; color:#777; font-size:.85rem; }
+    .warn { color:#a45500; background:#fff7ed; border:1px solid #fed7aa; padding:10px 12px; border-radius:10px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Lace Archive</h1>
+    <div class="sub">Backed by your Google Sheet + Google Drive images.</div>
+    <div class="bar">
+      <input id="q" type="search" placeholder="Search title, description, type, year…" />
+      <select id="typeFilter"><option value="">All types</option></select>
+      <select id="yearFilter"><option value="">All years</option></select>
+      <div class="count" id="count"></div>
+    </div>
+    <div id="heicNote" class="warn" style="display:block; margin-top:12px;">
+      Your images are currently in <strong>.heic</strong>. Most browsers cannot display HEIC. Convert to <strong>.jpg</strong> or <strong>.webp</strong> and upload alongside the originals. Because Google Drive uses file IDs, each converted file will have a new ID—list them in the sheet (see "DriveIDs" column guidance below).
+    </div>
+  </header>
+
+  <main>
+    <div id="grid" class="grid"></div>
+    <div id="empty" class="empty" style="display:none;">No results.</div>
+  </main>
+
+  <footer>
+    <div>Sheet and image changes appear on reload. Host this file on GitHub Pages.</div>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script>
+    // ===================== CONFIG =====================
+    // 1) Your Google Sheet published CSV URL (already provided)
+    const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRlGOWOEaQVNHtM0uiGXtsJMcCJWrHztkeqM1kY2kgdHiwwVH3cpLJqhL7XxEuV1hn6QL?output=csv";
+
+    // 2) Google Drive: build a direct-view URL from a file ID
+const driveUrl = (id) => `https://drive.google.com/uc?export=view&id=${id}`;
+
+// 2b) Optional: support a simple base-URL + filename approach (fallback)
+// If you later host JPG/WEBP copies at a predictable path, set IMAGE_BASE_URL
+// and the script will try Ref + suffixes (A/B/C/...) + extensions.
+const IMAGE_BASE_URL = ""; // e.g., https://cdn.example.com/lace/
+const IMAGE_PRIORITY_EXTS = ["jpg","jpeg","webp","png"]; // add "heic" last if you must
+const SUFFIXES = ["","A","B","C","D","E"]; // variants per piece
+
+    // 3) Column mapping — update to match your sheet headers exactly
+    // Required: Ref/ID + at least one of Title/Description
+    // For images: create a column named "DriveIDs" with one or more file IDs, separated by semicolons
+    const COL = {
+      ref: "UID",              // e.g., 01, 01A
+      title: "Title",
+      description: "Description",
+      year: "Year",
+      type: "Type",
+      driveIds: "DriveIDs",     // e.g., 1abc;1def;1ghi (IDs from share links)
+      imageUrls: "ImageURLs"     // optional: full image URLs (semicolon/comma separated)
+    };
+
+    // ===================== HELPERS =====================
+    function el(tag, attrs={}, children=[]) {
+      const node = document.createElement(tag);
+      for (const [k,v] of Object.entries(attrs)){
+        if (k === 'class') node.className = v;
+        else if (k === 'text') node.textContent = v;
+        else if (k.startsWith('on') && typeof v === 'function') node[k.toLowerCase()] = v;
+        else node.setAttribute(k, v);
+      }
+      for (const ch of [].concat(children)){
+        if (typeof ch === 'string') node.appendChild(document.createTextNode(ch));
+        else if (ch) node.appendChild(ch);
+      }
+      return node;
+    }
+
+    // Lightbox
+    const lightbox = el('div', { class: 'lightbox', id: 'lightbox' }, [
+      el('button', { class:'close', onclick: () => lightbox.classList.remove('open') }, ['Close'])
+    ]);
+    document.body.appendChild(lightbox);
+    function openLightbox(src){
+      const img = el('img', { src });
+      lightbox.querySelectorAll('img').forEach(i => i.remove());
+      lightbox.appendChild(img);
+      lightbox.classList.add('open');
+    }
+    function shareRef(ref){
+      try{
+        const url = new URL(location.href);
+        url.searchParams.set('ref', ref);
+        if (navigator.clipboard && navigator.clipboard.writeText){
+          navigator.clipboard.writeText(url.toString()).then(()=>{
+            alert('Shareable link copied to clipboard');
+          }).catch(()=>{ window.prompt('Copy link:', url.toString()); });
+        } else {
+          window.prompt('Copy link:', url.toString());
+        }
+      } catch(e){ console.warn(e); }
+    }
+
+    function hydrateFilters(rows){
+      const typeSet = new Set();
+      const yearSet = new Set();
+      rows.forEach(r => {
+        if (r[COL.type]) typeSet.add(String(r[COL.type]).trim());
+        if (r[COL.year]) yearSet.add(String(r[COL.year]).trim());
+      });
+      const typeFilter = document.getElementById('typeFilter');
+      const yearFilter = document.getElementById('yearFilter');
+      [...typeSet].sort((a,b)=>a.localeCompare(b)).forEach(v => typeFilter.appendChild(el('option',{value:v, text:v})));
+      [...yearSet].sort((a,b)=>a.localeCompare(b)).forEach(v => yearFilter.appendChild(el('option',{value:v, text:v})));
+    }
+
+    function matchesQuery(row, q){
+      if (!q) return true;
+      const hay = [COL.title, COL.description, COL.type, COL.year, COL.ref]
+        .map(c => (row[c]||'')+"")
+        .join(' ') 
+        .toLowerCase();
+      return hay.includes(q.toLowerCase());
+    }
+
+    function applyFilters(rows){
+      const q = document.getElementById('q').value.trim();
+      const tf = document.getElementById('typeFilter').value;
+      const yf = document.getElementById('yearFilter').value;
+      return rows.filter(r => {
+        if (!matchesQuery(r, q)) return false;
+        if (tf && String(r[COL.type]).trim() !== tf) return false;
+        if (yf && String(r[COL.year]).trim() !== yf) return false;
+        return true;
+      });
+    }
+
+    function urlsFromRow(row){
+      // 1) Drive IDs
+      const driveRaw = row[COL.driveIds] || '';
+      const driveIds = String(driveRaw).split(/[,;]|
+/).map(s=>s.trim()).filter(Boolean);
+      if (driveIds.length) {
+        return driveIds.map(driveUrl);
+      }
+      // 2) Direct image URLs
+      const urlRaw = row[COL.imageUrls] || '';
+      const urls = String(urlRaw).split(/[,;]|
+/).map(s=>s.trim()).filter(Boolean);
+      if (urls.length) return urls;
+      // 3) Fallback: build from base URL + Ref + suffixes + extensions
+      const ref = row[COL.ref] ? String(row[COL.ref]).trim() : '';
+      if (IMAGE_BASE_URL && ref){
+        const candidates = [];
+        for (const s of SUFFIXES){
+          const name = ref + s;
+          for (const ext of IMAGE_PRIORITY_EXTS){
+            candidates.push(IMAGE_BASE_URL + name + '.' + ext);
+          }
+        }
+        return candidates;
+      }
+      return [];
+    }
+
+    function render(rows){
+      const grid = document.getElementById('grid');
+      const empty = document.getElementById('empty');
+      grid.innerHTML = '';
+      const filtered = applyFilters(rows);
+      document.getElementById('count').textContent = `${filtered.length} item${filtered.length===1?'':'s'}`;
+      empty.style.display = filtered.length ? 'none' : 'block';
+
+      filtered.forEach(r => {
+        const ref = r[COL.ref] || '';
+        const title = r[COL.title] || (ref ? `Item ${ref}` : 'Untitled');
+        const year = r[COL.year] || '';
+        const type = r[COL.type] || '';
+        const desc = r[COL.description] || '';
+
+        const urls = urlsFromRow(r);
+        const gallery = el('div', { class:'gallery' });
+
+        // Main image (first URL if present)
+        const topImg = el('img', { class:'thumb', loading:'lazy', alt:title });
+        if (urls.length){
+          topImg.src = urls[0];
+          topImg.onclick = () => openLightbox(urls[0]);
+          // try-load fallback chain if some candidates 404: attach onerror to advance
+          let i = 0;
+          topImg.onerror = () => {
+            i++; if (i < urls.length) topImg.src = urls[i]; else topImg.onerror = null;
+          };
+        } else {
+          // No image URLs; show a neutral placeholder banner
+          topImg.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='1200' height='900'><rect width='100%' height='100%' fill='#f3f3f3'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-family='ui-sans-serif,system-ui' font-size='24' fill='#777'>No image listed</text></svg>`)}`;
+        }
+
+        // Thumbnails gallery (all URLs)
+        urls.forEach(u => {
+          const g = el('img', { loading:'lazy', alt: `${title}`, src: u });
+          g.onclick = () => openLightbox(u);
+          gallery.appendChild(g);
+        }););
+
+        const body = el('div', { class:'body' }, [
+          el('div', { class:'title', text: title }),
+          el('div', { class:'meta', text: [ref, year].filter(Boolean).join(' · ') }),
+          type ? el('div', { class:'tags' }, [ el('span', { class:'tag', text:type }) ]) : null,
+          desc ? el('div', { class:'desc', text: desc }) : null
+        ].filter(Boolean));
+
+        const card = el('div', { class:'card', 'data-ref': ref }, [
+          topImg,
+          body,
+          gallery,
+          el('div', { class:'body' }, [
+            el('a', { href:'#', class:'meta', onclick:(e)=>{ e.preventDefault(); shareRef(ref); } }, ['Share link'])
+          ])
+        ]);
+        grid.appendChild(card);
+      });
+    }
+
+    function boot(rows){
+      hydrateFilters(rows);
+      render(rows);
+
+      // Deep-link support: ?ref=UID
+      try {
+        const params = new URLSearchParams(location.search);
+        const urlRef = params.get('ref');
+        if (urlRef) {
+          const q = document.getElementById('q');
+          if (q) q.value = urlRef;
+          render(rows);
+          const elCard = document.querySelector('.card[data-ref="' + urlRef + '"]');
+          if (elCard) elCard.scrollIntoView({behavior:'smooth', block:'start'});
+        }
+      } catch(e) { /* noop */ }
+      ['q','typeFilter','yearFilter'].forEach(id => document.getElementById(id).addEventListener('input', () => render(rows)));
+    }
+
+    // ===================== LOAD CSV =====================
+    Papa.parse(SHEET_CSV_URL, {
+      download: true,
+      header: true,
+      skipEmptyLines: true,
+      complete: function(res){
+        const rows = res.data || [];
+        boot(rows);
+      },
+      error: function(err){
+        console.error(err);
+        document.getElementById('grid').innerHTML = '<div class="empty">Failed to load data. Check your CSV URL.</div>';
+      }
+    });
+  </script>
+</body>
+</html>
