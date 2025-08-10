@@ -51,9 +51,10 @@
       <select id="yearFilter"><option value="">All years</option></select>
       <div class="count" id="count"></div>
     </div>
-    <div id="heicNote" class="warn" style="display:block; margin-top:12px;">
+    <div id="heicNote" class="warn" style="display:none; margin-top:12px;">
       Your images are currently in <strong>.heic</strong>. Most browsers cannot display HEIC. Convert to <strong>.jpg</strong> or <strong>.webp</strong> and upload alongside the originals. Because Google Drive uses file IDs, each converted file will have a new ID—list them in the sheet (see "DriveIDs" column guidance below).
     </div>
+    <div id="status" class="sub" style="color:#6b7280;margin-top:6px;">Loading data…</div>
   </header>
 
   <main>
@@ -172,15 +173,13 @@ const SUFFIXES = ["","A","B","C","D","E"]; // variants per piece
     function urlsFromRow(row){
       // 1) Drive IDs
       const driveRaw = row[COL.driveIds] || '';
-      const driveIds = String(driveRaw).split(/[,;]|
-/).map(s=>s.trim()).filter(Boolean);
+      const driveIds = String(driveRaw).split(/[,\n;]+/).map(s=>s.trim()).filter(Boolean);
       if (driveIds.length) {
         return driveIds.map(driveUrl);
       }
       // 2) Direct image URLs
       const urlRaw = row[COL.imageUrls] || '';
-      const urls = String(urlRaw).split(/[,;]|
-/).map(s=>s.trim()).filter(Boolean);
+      const urls = String(urlRaw).split(/[,\n;]+/).map(s=>s.trim()).filter(Boolean);
       if (urls.length) return urls;
       // 3) Fallback: build from base URL + Ref + suffixes + extensions
       const ref = row[COL.ref] ? String(row[COL.ref]).trim() : '';
@@ -235,7 +234,7 @@ const SUFFIXES = ["","A","B","C","D","E"]; // variants per piece
           const g = el('img', { loading:'lazy', alt: `${title}`, src: u });
           g.onclick = () => openLightbox(u);
           gallery.appendChild(g);
-        }););
+        });
 
         const body = el('div', { class:'body' }, [
           el('div', { class:'title', text: title }),
@@ -282,14 +281,17 @@ const SUFFIXES = ["","A","B","C","D","E"]; // variants per piece
       skipEmptyLines: true,
       complete: function(res){
         const rows = res.data || [];
+        const status = document.getElementById('status');
+        if (status) status.textContent = `Loaded ${rows.length} row${rows.length===1?'':'s'} from sheet.`;
         boot(rows);
       },
       error: function(err){
         console.error(err);
-        document.getElementById('grid').innerHTML = '<div class="empty">Failed to load data. Check your CSV URL.</div>';
+        const s = document.getElementById('status');
+        if (s) s.textContent = `Failed to load CSV (${err && err.message ? err.message : 'unknown error'}). Check Publish to web + URL.`;
+        document.getElementById('grid').innerHTML = '<div class="empty">Failed to load data. Check your CSV URL / publishing status.</div>';
       }
     });
   </script>
 </body>
 </html>
-
