@@ -1,354 +1,536 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Lace Archive</title>
+  <title>Catalogue — Collection Le Berre‑Pichavant</title>
+  <meta name="description" content="Catalogue en ligne de la collection de dentelles Le Berre‑Pichavant. Recherche, filtres, fiches et galerie images." />
+  <!-- Tailwind via CDN (no build step) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- PapaParse for robust CSV parsing -->
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <style>
-    :root { --gap: 16px; }
-    html, body { margin:0; padding:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; color:#111; background:#fafafa; }
-    header { max-width: 1100px; margin: 0 auto; padding: 24px 16px; }
-    h1 { font-size: 1.8rem; margin: 0 0 8px; }
-    .sub { color:#555; font-size: .95rem; }
-    .bar { display:grid; grid-template-columns: 1fr repeat(5, minmax(140px, 180px)); gap:var(--gap); align-items:center; margin-top: 16px; }
-    input[type="search"], select { padding:10px 12px; border:1px solid #ddd; border-radius:10px; background:#fff; }
-    .count { grid-column: 1 / -1; color:#666; font-size:.9rem; text-align:right; }
+    /* Lightbox & impressions */
+    @media print {
+      .no-print { display: none !important; }
+      .print-only { display: block !important; }
+      body { color: #000; }
+    }
+    .print-only { display: none; }
 
-    main { max-width: 1100px; margin: 0 auto; padding: 8px 16px 48px; }
-    .grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(260px,1fr)); gap: var(--gap); }
+    /* Simple fade-in */
+    .fade-in { animation: fade .25s ease-in; }
+    @keyframes fade { from {opacity: 0;} to {opacity: 1;} }
 
-    .card { background:#fff; border:1px solid #eee; border-radius:16px; overflow:hidden; display:flex; flex-direction:column; }
-    .thumb { aspect-ratio: 4 / 3; object-fit: cover; width:100%; background:#f1f1f1; }
-    .body { padding:12px 14px 14px; display:flex; flex-direction:column; gap:6px; }
-    .title { font-weight:600; }
-    .meta { color:#666; font-size:.9rem; }
-    .desc { color:#333; font-size:.95rem; }
-    .tags { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
-    .tag { font-size:.8rem; color:#444; background:#f3f3f3; border:1px solid #e8e8e8; padding:2px 8px; border-radius:999px; }
+    /* Scrollbar for thumbnail strip */
+    .thumbs::-webkit-scrollbar { height: 6px; }
+    .thumbs::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
 
-    .gallery { display:flex; gap:8px; overflow:auto; padding: 0 14px 14px; }
-    .gallery img { height:80px; border-radius:10px; border:1px solid #eee; background:#f6f6f6; cursor: zoom-in; }
-
-    .empty { text-align:center; color:#777; padding:40px 12px; }
-
-    /* Lightbox */
-    .lightbox { position:fixed; inset:0; background: rgba(0,0,0,.85); display:none; align-items:center; justify-content:center; z-index: 999; }
-    .lightbox.open { display:flex; }
-    .lightbox img { max-width: 92vw; max-height: 92vh; border-radius: 8px; }
-    .lightbox .close { position:absolute; top:16px; right:16px; background:#fff; border:none; padding:8px 12px; border-radius:999px; cursor:pointer; }
-
-    footer { max-width: 1100px; margin: 0 auto; padding: 16px; color:#777; font-size:.85rem; }
-    .warn { color:#a45500; background:#fff7ed; border:1px solid #fed7aa; padding:10px 12px; border-radius:10px; }
+    /* Basic focus ring for accessibility */
+    :focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
   </style>
 </head>
-<body>
-  <header>
-    <h1>Lace Archive</h1>
-    <div class="sub">Backed by your Google Sheet + Google Drive images.</div>
-    <div class="bar">
-      <input id="q" type="search" placeholder="Rechercher (titre, description, tags…)" />
-      <select id="utilFilter"><option value="">Utilisation (toutes)</option></select>
-      <select id="modeFilter"><option value="">Mode (tous)</option></select>
-      <select id="epoFilter"><option value="">Époque (toutes)</option></select>
-      <select id="styleFilter"><option value="">Style (tous)</option></select>
-      <select id="fabFilter"><option value="">Fabrication (toutes)</option></select>
-      <div class="count" id="count"></div>
+<body class="min-h-screen bg-slate-50 text-slate-900">
+  <header class="sticky top-0 z-30 bg-white/90 backdrop-blur border-b border-slate-200">
+    <div class="max-w-7xl mx-auto px-4 py-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div>
+        <h1 class="text-2xl font-semibold tracking-tight">Collection Le Berre‑Pichavant</h1>
+        <p class="text-slate-600 text-sm">Catalogue de dentelles — données Google Sheets, images Google Drive</p>
+      </div>
+      <div class="text-xs text-slate-500" id="statusLine">Chargement…</div>
     </div>
-    <div id="heicNote" class="warn" style="display:none; margin-top:12px;">
-      Vos images d'origine sont en <strong>.heic</strong>. La plupart des navigateurs ne l'affichent pas. Ajoutez des copies <strong>.jpg</strong> ou <strong>.webp</strong> et rafraîchissez l'index d'images dans le tableau.
-    </div>
-    <div id="status" class="sub" style="color:#6b7280;margin-top:6px;">Chargement des données…</div>
   </header>
 
-  <main>
-    <div id="grid" class="grid"></div>
-    <div id="empty" class="empty" style="display:none;">Aucun résultat.</div>
+  <!-- Contrôles de recherche et filtres -->
+  <section class="bg-white border-b border-slate-200">
+    <div class="max-w-7xl mx-auto px-4 py-4 grid gap-3 md:grid-cols-12">
+      <div class="md:col-span-4">
+        <label for="q" class="block text-xs font-medium text-slate-600">Recherche</label>
+        <input id="q" type="search" placeholder="Rechercher titre, UID, description, étiquettes…" class="w-full mt-1 rounded-xl border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-blue-500" />
+      </div>
+      <div class="md:col-span-8 grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div>
+          <label class="block text-xs font-medium text-slate-600">Utilisation</label>
+          <select id="f-utilisation" class="w-full mt-1 rounded-xl border border-slate-300 px-3 py-2">
+            <option value="">Toutes</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-600">Mode</label>
+          <select id="f-mode" class="w-full mt-1 rounded-xl border border-slate-300 px-3 py-2">
+            <option value="">Toutes</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-600">Époque</label>
+          <select id="f-epoque" class="w-full mt-1 rounded-xl border border-slate-300 px-3 py-2">
+            <option value="">Toutes</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-600">Style</label>
+          <select id="f-style" class="w-full mt-1 rounded-xl border border-slate-300 px-3 py-2">
+            <option value="">Tous</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-600">Fabrication</label>
+          <select id="f-fabrication" class="w-full mt-1 rounded-xl border border-slate-300 px-3 py-2">
+            <option value="">Toutes</option>
+          </select>
+        </div>
+      </div>
+      <div class="md:col-span-12 flex gap-2">
+        <button id="btn-reset" class="no-print inline-flex items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50">Réinitialiser</button>
+        <button id="btn-print" class="no-print inline-flex items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50">Imprimer la fiche ouverte</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Grille des cartes -->
+  <main class="max-w-7xl mx-auto px-4 py-6">
+    <div id="grid" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"></div>
+    <div id="emptyState" class="hidden text-center text-slate-500 py-16">Aucun résultat. Modifiez la recherche ou les filtres.</div>
   </main>
 
-  <footer>
-    <div>Les modifications du tableau et des images apparaissent au rechargement. Hébergez ce fichier via GitHub Pages.</div>
-  </footer>
+  <!-- Panneau fiche (plein écran) -->
+  <section id="detailPanel" class="hidden fixed inset-0 z-40 bg-white overflow-y-auto">
+    <div class="max-w-5xl mx-auto px-4 py-6">
+      <div class="flex items-start justify-between gap-4 no-print">
+        <h2 id="detailTitle" class="text-xl font-semibold"></h2>
+        <div class="flex gap-2">
+          <button id="btnCloseDetail" class="rounded-xl border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50">Fermer</button>
+          <button onclick="window.print()" class="rounded-xl border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50">Imprimer</button>
+        </div>
+      </div>
+      <div id="detailContent" class="mt-4"></div>
+    </div>
+  </section>
 
-  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <!-- Lightbox images -->
+  <div id="lightbox" class="hidden fixed inset-0 z-50 bg-black/90 text-white">
+    <button id="lbClose" class="absolute top-4 right-4 px-3 py-1 rounded bg-white/10 hover:bg-white/20">Fermer</button>
+    <button id="lbPrev" class="absolute left-3 top-1/2 -translate-y-1/2 px-3 py-2 rounded bg-white/10 hover:bg-white/20">&#10094;</button>
+    <button id="lbNext" class="absolute right-3 top-1/2 -translate-y-1/2 px-3 py-2 rounded bg-white/10 hover:bg-white/20">&#10095;</button>
+    <img id="lbImg" alt="" class="max-h-[90vh] max-w-[90vw] object-contain mx-auto my-8 fade-in" />
+    <div id="lbCaption" class="text-center text-sm text-slate-200"></div>
+  </div>
+
   <script>
-    // ===================== CONFIG =====================
-    // 1) Published CSV URL (specific tab)
-    const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRlGOWOEaQVNHtM0uiGXtsJMcCJWrHztkeqM1kY2kgdHiwwVH3cpLJqhL7XxEuV1hn6QL5UQ-xMrRcS/pub?gid=0&single=true&output=csv";
+    // ---- Config ----
+    const DEFAULT_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRlGOWOEaQVNHtM0uiGXtsJMcCJWrHztkeqM1kY2kgdHiwwVH3cpLJqhL7XxEuV1hn6QL5UQ-xMrRcS/pub?output=csv";
+    const urlParams = new URLSearchParams(location.search);
+    const CSV_URL = urlParams.get('csv') || DEFAULT_CSV_URL; // permet de tester une autre source si besoin
 
-    // 2) Google Drive: build a direct-view URL from a file ID
-    const driveThumb = (id) => `https://drive.google.com/thumbnail?id=${id}&sz=w2000`;
-    const driveDirect = (id) => `https://drive.google.com/uc?export=download&id=${id}`;
-
-    // 2b) Optional: filename-based fallback (if you later host on a CDN or in your repo)
-    const IMAGE_BASE_URL = ""; // e.g., https://cdn.example.com/lace/
-    const IMAGE_PRIORITY_EXTS = ["jpg","jpeg","webp","png"]; // add "heic" last only if you must
-    const SUFFIXES = ["","A","B","C","D","E"]; // UID variants per piece
-
-    // 3) Column mapping — EXACT header names from your sheet
-    const COL = {
-      ref: "UID",                       // e.g., 01, 01A
-      title: "Description",             // short label shown as title
-      description: "Description de l'ouvrage", // longer text
-      year: "Epoque",                   // shown in the meta line
-      type: "Style",                    // optional legacy mapping
-      driveIds: "DriveIDs",             // semicolon/comma/newline-separated file IDs
-      imageUrls: "ImageURLs",           // optional full URLs
-      quantite: "Quantité",
-      emplacement: "Emplacement",
-      utilisation: "Utilisation",
-      mode: "Mode",
-      epoque: "Epoque",
-      style: "Style",
-      fabrication: "fabrication",
-      client: "Client",
-      collection: "Collection"
+    // Champs/étiquettes attendus (tolérance sur la casse et les accents)
+    const FIELD_ALIASES = {
+      uid: ["uid", "UID", "Uid"],
+      driveids: ["driveids", "DriveIDs", "Drive Ids", "Drive IDs", "Drive Id", "DriveId", "Images", "Image IDs"],
+      description: ["description", "Description"],
+      longdesc: ["description de l'ouvrage", "Description de l'ouvrage", "Description de l’ouvrage", "longdesc"],
+      epoque: ["epoque", "Époque", "Epoque"],
+      utilisation: ["utilisation", "Utilisation"],
+      mode: ["mode", "Mode"],
+      style: ["style", "Style"],
+      fabrication: ["fabrication", "Fabrication"],
+      quantite: ["quantité", "Quantité", "Quantite"],
+      emplacement: ["emplacement", "Emplacement"],
+      client: ["client", "Client"],
+      collection: ["collection", "Collection"],
+      // Images tab possibles
+      fileid: ["fileid", "FileId", "Drive FileId", "Drive File ID", "Drive File Id", "ID", "Id"],
+      filename: ["filename", "Filename", "Fichier", "Nom", "Name"],
     };
 
-    // Tag fields we want to show on cards (label : column)
-    const TAG_FIELDS = [
-      ["Quantité", COL.quantite],
-      ["Emplacement", COL.emplacement],
-      ["Utilisation", COL.utilisation],
-      ["Mode", COL.mode],
-      ["Époque", COL.epoque],
-      ["Style", COL.style],
-      ["Fabrication", COL.fabrication],
-      ["Client", COL.client],
-      ["Collection", COL.collection]
-    ];
+    const REQUIRED_HEADERS = ["uid"]; // DriveIDs peuvent être dans un autre onglet
 
-    // Filter fields and their select IDs
-    const FILTERS = [
-      { id: 'utilFilter', col: COL.utilisation },
-      { id: 'modeFilter', col: COL.mode },
-      { id: 'epoFilter', col: COL.epoque },
-      { id: 'styleFilter', col: COL.style },
-      { id: 'fabFilter', col: COL.fabrication },
-    ];
+    function keyOf(obj, wanted) {
+      const list = FIELD_ALIASES[wanted] || [];
+      return Object.keys(obj).find(k => list.includes(k));
+    }
 
-    // ===================== HELPERS =====================
-    function el(tag, attrs={}, children=[]) {
-      const node = document.createElement(tag);
-      for (const [k,v] of Object.entries(attrs)){
-        if (k === 'class') node.className = v;
-        else if (k === 'text') node.textContent = v;
-        else if (k.startsWith('on') && typeof v === 'function') node[k.toLowerCase()] = v;
-        else node.setAttribute(k, v);
+    function normalizeRow(row) {
+      const out = {};
+      for (const [k, v] of Object.entries(row)) {
+        if (v === undefined || v === null) continue;
+        out[k.trim()] = typeof v === 'string' ? v.trim() : v;
       }
-      for (const ch of [].concat(children)){
-        if (typeof ch === 'string') node.appendChild(document.createTextNode(ch));
-        else if (ch) node.appendChild(ch);
-      }
-      return node;
+      // Ajoute une version lower-case des clés pour matching tolérant
+      const lowered = {};
+      Object.keys(out).forEach(k => lowered[k.toLowerCase()] = out[k]);
+      return lowered;
     }
 
-    // Lightbox
-    const lightbox = el('div', { class: 'lightbox', id: 'lightbox' }, [
-      el('button', { class:'close', onclick: () => lightbox.classList.remove('open') }, ['Close'])
-    ]);
-    document.body.appendChild(lightbox);
-    function openLightbox(src){
-      const img = el('img', { src });
-      lightbox.querySelectorAll('img').forEach(i => i.remove());
-      lightbox.appendChild(img);
-      lightbox.classList.add('open');
-    }
-    function toFull(u){
-      try{
-        const uo = new URL(u);
-        if (uo.hostname === 'drive.google.com' && uo.pathname === '/thumbnail'){
-          const id = uo.searchParams.get('id');
-          if (id) return `https://drive.google.com/uc?export=download&id=${id}`;
-        }
-      }catch(e){}
-      return u;
-    });
-      lightbox.querySelectorAll('img').forEach(i => i.remove());
-      lightbox.appendChild(img);
-      lightbox.classList.add('open');
-    }
-    function shareRef(ref){
-      try{
-        const url = new URL(location.href);
-        url.searchParams.set('ref', ref);
-        if (navigator.clipboard && navigator.clipboard.writeText){
-          navigator.clipboard.writeText(url.toString()).then(()=>{
-            alert('Lien copié dans le presse‑papiers');
-          }).catch(()=>{ window.prompt('Copier le lien :', url.toString()); });
-        } else {
-          window.prompt('Copier le lien :', url.toString());
-        }
-      } catch(e){ console.warn(e); }
+    function splitMulti(value) {
+      if (!value) return [];
+      return String(value)
+        .split(/\n|;|,|\|/)
+        .map(s => s.trim())
+        .filter(Boolean);
     }
 
-    function hydrateFilters(rows){
-      // Build option sets for each filter
-      FILTERS.forEach(f => {
-        const set = new Set();
-        rows.forEach(r => { if (r[f.col]) set.add(String(r[f.col]).trim()); });
-        const sel = document.getElementById(f.id);
-        [...set].sort((a,b)=>a.localeCompare(b)).forEach(v => sel.appendChild(el('option',{value:v, text:v})));
-      });
+    function drivePreviewUrl(id) {
+      return `https://drive.google.com/uc?export=view&id=${encodeURIComponent(id)}`;
     }
 
-    function matchesQuery(row, q){
-      if (!q) return true;
-      const hayParts = [COL.title, COL.description, COL.ref, COL.year, COL.type, COL.utilisation, COL.mode, COL.epoque, COL.style, COL.fabrication, COL.quantite, COL.emplacement, COL.client, COL.collection];
-      const hay = hayParts.map(c => (row[c]||'')+"").join(' ').toLowerCase();
-      return hay.includes(q.toLowerCase());
-    }
+    function textOrDash(v) { return v ? String(v) : "—"; }
 
-    function applyFilters(rows){
-      const q = document.getElementById('q').value.trim();
-      // Grab current filter values
-      const active = {};
-      FILTERS.forEach(f => { active[f.col] = document.getElementById(f.id).value; });
+    // ---- État global ----
+    let ITEMS = []; // objets { uid, title, long, epoque, utilisation, mode, style, fabrication, extra:{...}, images:[{id, filename}] }
+    let IMAGE_MAP = {}; // uid -> [{id, filename}]
 
-      return rows.filter(r => {
-        if (!matchesQuery(r, q)) return false;
-        // All dropdown filters must match if set
-        for (const f of FILTERS){
-          const want = document.getElementById(f.id).value;
-          if (want && String(r[f.col]||'').trim() !== want) return false;
-        }
-        return true;
-      });
-    }
-
-    function urlsFromRow(row){
-      // 1) Drive IDs
-      const driveRaw = row[COL.driveIds] || '';
-      const driveIds = String(driveRaw).split(/[,;
-]+/).map(s=>s.trim()).filter(Boolean);
-      if (driveIds.length) return driveIds.map(driveThumb);
-
-      // 2) Direct URLs
-      const urlRaw = row[COL.imageUrls] || '';
-      const urls = String(urlRaw).split(/[,;
-]+/).map(s=>s.trim()).filter(Boolean);
-      if (urls.length) return urls;
-
-      // 3) Fallback: base URL + UID + suffixes + extensions
-      const ref = row[COL.ref] ? String(row[COL.ref]).trim() : '';
-      if (IMAGE_BASE_URL && ref){
-        const candidates = [];
-        for (const s of SUFFIXES){
-          const name = ref + s;
-          for (const ext of IMAGE_PRIORITY_EXTS){
-            candidates.push(IMAGE_BASE_URL + name + '.' + ext);
-          }
-        }
-        return candidates;
-      }
-      return [];
-    }
-
-    function render(rows){
-      let imagesOk = 0;
-      const statusEl = document.getElementById('status');
-      const grid = document.getElementById('grid');
-      const empty = document.getElementById('empty');
-      grid.innerHTML = '';
-      const filtered = applyFilters(rows);
-      document.getElementById('count').textContent = `${filtered.length} item${filtered.length===1?'':'s'}`;
-      empty.style.display = filtered.length ? 'none' : 'block';
-
-      filtered.forEach(r => {
-        const ref = r[COL.ref] || '';
-        const title = r[COL.title] || (ref ? `Item ${ref}` : 'Sans titre');
-        const year = r[COL.year] || '';
-        const desc = r[COL.description] || '';
-
-        const urls = urlsFromRow(r);
-        const gallery = el('div', { class:'gallery' });
-
-        // Main image
-        const topImg = el('img', { class:'thumb', loading:'lazy', alt:title });
-        if (urls.length){
-          topImg.src = urls[0];
-          topImg.onclick = () => openLightbox(toFull(urls[0]));
-          let i = 0; // fallback chain
-          topImg.onerror = () => { i++; if (i < urls.length) topImg.src = urls[i]; else topImg.onerror = null; };
-        } else {
-          topImg.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='1200' height='900'><rect width='100%' height='100%' fill='#f3f3f3'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-family='ui-sans-serif,system-ui' font-size='24' fill='#777'>Aucune image</text></svg>`)}`;
-        }
-
-        // Thumbnails (all URLs)
-        urls.forEach(u => {
-          const g = el('img', { loading:'lazy', alt: `${title}`, src: u });
-          g.onclick = () => openLightbox(toFull(u));
-          gallery.appendChild(g);
+    // ---- Chargement ----
+    async function loadCSV() {
+      const res = await fetch(CSV_URL, { cache: 'no-store' });
+      if (!res.ok) throw new Error(`Échec de chargement CSV: ${res.status}`);
+      const csvText = await res.text();
+      return new Promise((resolve) => {
+        Papa.parse(csvText, {
+          header: true,
+          skipEmptyLines: true,
+          transformHeader: h => h, // garder la casse d'origine, on normalise ensuite
+          complete: (results) => resolve(results.data)
         });
-
-        // Tags block
-        const tags = TAG_FIELDS
-          .map(([label, col]) => {
-            const v = (r[col]||'').toString().trim();
-            return v ? el('span', { class:'tag' }, [`${label}: ${v}`]) : null;
-          })
-          .filter(Boolean);
-
-        const body = el('div', { class:'body' }, [
-          el('div', { class:'title', text: title }),
-          el('div', { class:'meta', text: [ref, year].filter(Boolean).join(' · ') }),
-          desc ? el('div', { class:'desc', text: desc }) : null,
-          tags.length ? el('div', { class:'tags' }, tags) : null
-        ].filter(Boolean));
-
-        const card = el('div', { class:'card', 'data-ref': ref }, [
-          topImg,
-          body,
-          gallery,
-          el('div', { class:'body' }, [
-            el('a', { href:'#', class:'meta', onclick:(e)=>{ e.preventDefault(); shareRef(ref); } }, ['Partager le lien'])
-          ])
-        ]);
-        grid.appendChild(card);
       });
     }
 
-    function boot(rows){
-      const usesHeicFirst = String(IMAGE_PRIORITY_EXTS[0] || '').toLowerCase() === 'heic';
-      document.getElementById('heicNote').style.display = usesHeicFirst ? 'block' : 'none';
-
-      hydrateFilters(rows);
-      render(rows);
-
-      // Deep-link support: ?ref=UID
-      try {
-        const params = new URLSearchParams(location.search);
-        const urlRef = params.get('ref');
-        if (urlRef) {
-          const q = document.getElementById('q');
-          if (q) q.value = urlRef;
-          render(rows);
-          const elCard = document.querySelector('.card[data-ref="' + urlRef + '"]');
-          if (elCard) elCard.scrollIntoView({behavior:'smooth', block:'start'});
-        }
-      } catch(e) { /* noop */ }
-
-      ['q','utilFilter','modeFilter','epoFilter','styleFilter','fabFilter']
-        .forEach(id => document.getElementById(id).addEventListener('input', () => render(rows)));
+    function collectSchemaWarnings(rows) {
+      const first = rows[0] ? normalizeRow(rows[0]) : {};
+      const missing = REQUIRED_HEADERS.filter(h => !keyOf(first, h));
+      return missing;
     }
 
-    // ===================== LOAD CSV =====================
-    Papa.parse(SHEET_CSV_URL, {
-      download: true,
-      header: true,
-      skipEmptyLines: true,
-      complete: function(res){
-        const rows = res.data || [];
-        const status = document.getElementById('status');
-        if (status) status.textContent = `Lignes chargées : ${rows.length}`;
-        boot(rows);
-      },
-      error: function(err){
-        console.error(err);
-        const s = document.getElementById('status');
-        if (s) s.textContent = `Échec du chargement CSV (${err && err.message ? err.message : 'erreur inconnue'}). Vérifiez la publication et l'URL.`;
-        document.getElementById('grid').innerHTML = '<div class="empty">Impossible de charger les données. Vérifiez l\'URL CSV / état de publication.</div>';
+    function ingestRows(rows) {
+      const items = new Map();
+      const images = new Map();
+      for (const raw of rows) {
+        const r = normalizeRow(raw);
+        const kUID = keyOf(r, 'uid');
+        const uid = kUID ? r[kUID] : undefined;
+        if (!uid) continue;
+
+        // Détecter si ligne de données principale (présence de description) ou ligne d'index images
+        const kTitle = keyOf(r, 'description');
+        const kLong = keyOf(r, 'longdesc');
+
+        // Collecte images dans tous les cas si présentes
+        const kDrive = keyOf(r, 'driveids');
+        const kFileId = keyOf(r, 'fileid');
+        const kFilename = keyOf(r, 'filename');
+        const imgArr = [];
+        if (kDrive && r[kDrive]) {
+          splitMulti(r[kDrive]).forEach(id => imgArr.push({ id, filename: r[kFilename] || undefined }));
+        }
+        if (kFileId && r[kFileId]) {
+          splitMulti(r[kFileId]).forEach(id => imgArr.push({ id, filename: r[kFilename] || undefined }));
+        }
+        if (imgArr.length) {
+          if (!images.has(uid)) images.set(uid, []);
+          images.get(uid).push(...imgArr);
+        }
+
+        // Si ligne de contenu principal, enregistrer/mettre à jour l'item
+        if (kTitle || kLong) {
+          const item = items.get(uid) || { uid };
+          item.title = (kTitle && r[kTitle]) || item.title || uid;
+          item.long = (kLong && r[kLong]) || item.long || "";
+          const kEpoque = keyOf(r, 'epoque');
+          const kUtil = keyOf(r, 'utilisation');
+          const kMode = keyOf(r, 'mode');
+          const kStyle = keyOf(r, 'style');
+          const kFab = keyOf(r, 'fabrication');
+          item.epoque = kEpoque ? r[kEpoque] : (item.epoque || "");
+          item.utilisation = kUtil ? r[kUtil] : (item.utilisation || "");
+          item.mode = kMode ? r[kMode] : (item.mode || "");
+          item.style = kStyle ? r[kStyle] : (item.style || "");
+          item.fabrication = kFab ? r[kFab] : (item.fabrication || "");
+          // Extras affichables
+          const kQ = keyOf(r, 'quantite');
+          const kE = keyOf(r, 'emplacement');
+          const kC = keyOf(r, 'client');
+          const kCol = keyOf(r, 'collection');
+          item.extra = {
+            Quantité: kQ ? r[kQ] : undefined,
+            Emplacement: kE ? r[kE] : undefined,
+            Client: kC ? r[kC] : undefined,
+            Collection: kCol ? r[kCol] : undefined,
+          };
+          items.set(uid, item);
+        }
       }
+
+      // Fusion images -> items
+      const out = [];
+      let withImages = 0;
+      items.forEach((item, uid) => {
+        item.images = images.get(uid) || [];
+        if (item.images.length) withImages++;
+        out.push(item);
+      });
+
+      IMAGE_MAP = Object.fromEntries(images);
+      ITEMS = out;
+      return { countRows: rows.length, items: out, withImages };
+    }
+
+    function buildFilterOptions(items) {
+      const pick = (k) => Array.from(new Set(items.map(it => (it[k] || '').trim()).filter(Boolean))).sort((a,b)=>a.localeCompare(b, 'fr'));
+      fillSelect('f-utilisation', pick('utilisation'));
+      fillSelect('f-mode', pick('mode'));
+      fillSelect('f-epoque', pick('epoque'));
+      fillSelect('f-style', pick('style'));
+      fillSelect('f-fabrication', pick('fabrication'));
+    }
+
+    function fillSelect(id, values) {
+      const sel = document.getElementById(id);
+      const current = sel.value;
+      sel.innerHTML = '<option value="">Toutes</option>';
+      values.forEach(v => {
+        const opt = document.createElement('option');
+        opt.value = v; opt.textContent = v;
+        sel.appendChild(opt);
+      });
+      if (values.includes(current)) sel.value = current; // garder sélection si possible
+    }
+
+    function matchFilters(item) {
+      const f = {
+        utilisation: document.getElementById('f-utilisation').value,
+        mode: document.getElementById('f-mode').value,
+        epoque: document.getElementById('f-epoque').value,
+        style: document.getElementById('f-style').value,
+        fabrication: document.getElementById('f-fabrication').value,
+      };
+      for (const [k, v] of Object.entries(f)) {
+        if (v && String(item[k] || '').trim() !== v) return false;
+      }
+      const q = document.getElementById('q').value.trim().toLowerCase();
+      if (!q) return true;
+      const hay = [
+        item.title, item.long, item.uid,
+        item.utilisation, item.mode, item.epoque, item.style, item.fabrication,
+        Object.values(item.extra||{}).join(' ')
+      ].join(' ').toLowerCase();
+      return hay.includes(q);
+    }
+
+    function renderGrid() {
+      const grid = document.getElementById('grid');
+      grid.innerHTML = '';
+      const results = ITEMS.filter(matchFilters);
+      document.getElementById('emptyState').classList.toggle('hidden', results.length !== 0);
+
+      for (const item of results) {
+        const card = document.createElement('article');
+        card.className = 'bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col';
+
+        // Media
+        const media = document.createElement('div');
+        media.className = 'bg-slate-100 aspect-[4/3] relative';
+        const mainImg = document.createElement('img');
+        mainImg.alt = item.title || item.uid;
+        mainImg.className = 'w-full h-full object-cover';
+        const firstImg = item.images && item.images[0] ? drivePreviewUrl(item.images[0].id) : '';
+        if (firstImg) {
+          mainImg.src = firstImg;
+          mainImg.addEventListener('click', () => openLightbox(item, 0));
+          mainImg.classList.add('cursor-zoom-in');
+        } else {
+          mainImg.src = 'data:image/svg+xml;utf8,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300"><rect width="400" height="300" fill="#e2e8f0"/><text x="50%" y="50%" text-anchor="middle" fill="#64748b" font-family="sans-serif" font-size="16">Aucune image</text></svg>`);
+        }
+        media.appendChild(mainImg);
+        card.appendChild(media);
+
+        // Contenu
+        const content = document.createElement('div');
+        content.className = 'p-4 flex-1 flex flex-col gap-2';
+        const title = document.createElement('h3');
+        title.className = 'font-medium leading-snug';
+        title.textContent = item.title || item.uid;
+        content.appendChild(title);
+
+        const meta = document.createElement('div');
+        meta.className = 'text-xs text-slate-600';
+        meta.textContent = `UID : ${item.uid} · Époque : ${textOrDash(item.epoque)}`;
+        content.appendChild(meta);
+
+        if (item.long) {
+          const p = document.createElement('p');
+          p.className = 'text-sm text-slate-700 line-clamp-3';
+          p.textContent = item.long;
+          content.appendChild(p);
+        }
+
+        // étiquettes visibles
+        const tags = [
+          ['Utilisation', item.utilisation],
+          ['Mode', item.mode],
+          ['Style', item.style],
+          ['Fabrication', item.fabrication],
+        ].filter(([,v]) => v);
+        if (tags.length) {
+          const tagWrap = document.createElement('div');
+          tagWrap.className = 'flex flex-wrap gap-2 mt-1';
+          tags.forEach(([label, v]) => {
+            const t = document.createElement('span');
+            t.className = 'text-xs bg-slate-100 border border-slate-200 rounded-full px-2 py-0.5';
+            t.textContent = `${label}: ${v}`;
+            tagWrap.appendChild(t);
+          });
+          content.appendChild(tagWrap);
+        }
+
+        // Mini galerie
+        if (item.images && item.images.length > 1) {
+          const strip = document.createElement('div');
+          strip.className = 'thumbs mt-2 flex gap-2 overflow-x-auto';
+          item.images.slice(0, 10).forEach((img, idx) => {
+            const th = document.createElement('img');
+            th.src = drivePreviewUrl(img.id);
+            th.alt = (img.filename || item.title || item.uid);
+            th.className = 'h-14 w-20 object-cover rounded cursor-pointer border border-transparent hover:border-blue-500';
+            th.addEventListener('click', () => openLightbox(item, idx));
+            strip.appendChild(th);
+          });
+          content.appendChild(strip);
+        }
+
+        // Actions
+        const actions = document.createElement('div');
+        actions.className = 'mt-3 flex items-center justify-between';
+        const btnDetail = document.createElement('button');
+        btnDetail.className = 'no-print text-sm px-3 py-2 rounded-xl border border-slate-300 hover:bg-slate-50';
+        btnDetail.textContent = 'Ouvrir la fiche';
+        btnDetail.addEventListener('click', () => openDetail(item));
+        actions.appendChild(btnDetail);
+
+        content.appendChild(actions);
+        card.appendChild(content);
+        grid.appendChild(card);
+      }
+    }
+
+    // ---- Détail ----
+    function openDetail(item) {
+      const panel = document.getElementById('detailPanel');
+      const t = document.getElementById('detailTitle');
+      const c = document.getElementById('detailContent');
+      t.textContent = item.title || item.uid;
+      c.innerHTML = '';
+
+      // Méta
+      const meta = document.createElement('div');
+      meta.className = 'text-sm text-slate-600';
+      meta.textContent = `UID : ${item.uid} · Époque : ${textOrDash(item.epoque)}`;
+      c.appendChild(meta);
+
+      if (item.long) {
+        const p = document.createElement('p');
+        p.className = 'mt-2 text-slate-800';
+        p.textContent = item.long;
+        c.appendChild(p);
+      }
+
+      // Tableau infos supplémentaires
+      const extras = Object.entries(item.extra || {}).filter(([,v]) => v);
+      if (extras.length) {
+        const table = document.createElement('table');
+        table.className = 'mt-4 w-full text-sm border border-slate-200 rounded-xl overflow-hidden';
+        const tbody = document.createElement('tbody');
+        extras.forEach(([k,v]) => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td class="bg-slate-50 px-3 py-2 w-40 border-b border-slate-200">${k}</td><td class="px-3 py-2 border-b border-slate-200">${v}</td>`;
+          tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+        c.appendChild(table);
+      }
+
+      // Galerie grande
+      if (item.images && item.images.length) {
+        const wrap = document.createElement('div');
+        wrap.className = 'mt-4 grid grid-cols-2 md:grid-cols-3 gap-3';
+        item.images.forEach((img, idx) => {
+          const im = document.createElement('img');
+          im.src = drivePreviewUrl(img.id);
+          im.alt = img.filename || item.title || item.uid;
+          im.className = 'w-full h-48 object-cover rounded cursor-zoom-in';
+          im.addEventListener('click', () => openLightbox(item, idx));
+          wrap.appendChild(im);
+        });
+        c.appendChild(wrap);
+      }
+
+      panel.classList.remove('hidden');
+      history.replaceState(null, '', `#${encodeURIComponent(item.uid)}`);
+    }
+
+    document.getElementById('btnCloseDetail').addEventListener('click', () => {
+      document.getElementById('detailPanel').classList.add('hidden');
+      history.replaceState(null, '', location.pathname + location.search);
     });
+
+    // ---- Lightbox ----
+    let LB = { item: null, index: 0 };
+    function openLightbox(item, index) {
+      LB.item = item; LB.index = index || 0;
+      const box = document.getElementById('lightbox');
+      updateLightbox();
+      box.classList.remove('hidden');
+    }
+    function updateLightbox() {
+      const { item, index } = LB;
+      if (!item) return;
+      const img = item.images[index];
+      if (!img) return;
+      const el = document.getElementById('lbImg');
+      el.src = drivePreviewUrl(img.id);
+      document.getElementById('lbCaption').textContent = (img.filename || item.title || item.uid) + `  (${index+1}/${item.images.length})`;
+    }
+    function closeLightbox() { document.getElementById('lightbox').classList.add('hidden'); }
+    document.getElementById('lbClose').addEventListener('click', closeLightbox);
+    document.getElementById('lightbox').addEventListener('click', (e) => { if (e.target.id === 'lightbox') closeLightbox(); });
+    document.getElementById('lbPrev').addEventListener('click', () => { if (!LB.item) return; LB.index = (LB.index - 1 + LB.item.images.length) % LB.item.images.length; updateLightbox(); });
+    document.getElementById('lbNext').addEventListener('click', () => { if (!LB.item) return; LB.index = (LB.index + 1) % LB.item.images.length; updateLightbox(); });
+
+    // ---- Interaction ----
+    ['q','f-utilisation','f-mode','f-epoque','f-style','f-fabrication'].forEach(id => {
+      document.getElementById(id).addEventListener('input', renderGrid);
+      document.getElementById(id).addEventListener('change', renderGrid);
+    });
+    document.getElementById('btn-reset').addEventListener('click', () => {
+      document.getElementById('q').value = '';
+      ['f-utilisation','f-mode','f-epoque','f-style','f-fabrication'].forEach(id => document.getElementById(id).value = '');
+      renderGrid();
+    });
+    document.getElementById('btn-print').addEventListener('click', () => window.print());
+
+    // ---- Démarrage ----
+    (async function init() {
+      const status = document.getElementById('statusLine');
+      status.textContent = 'Chargement des données…';
+      try {
+        const rows = await loadCSV();
+        const missing = collectSchemaWarnings(rows);
+        const { countRows, items, withImages } = ingestRows(rows);
+        buildFilterOptions(items);
+        renderGrid();
+        status.textContent = `Chargé ${countRows} lignes · Articles: ${items.length} · Avec images: ${withImages}` + (missing.length ? ` · ⚠︎ Champs requis manquants: ${missing.join(', ')}` : '');
+
+        // Ouvrir fiche si hash UID présent
+        const hash = decodeURIComponent(location.hash.slice(1));
+        if (hash) {
+          const found = ITEMS.find(it => String(it.uid) === hash);
+          if (found) openDetail(found);
+        }
+      } catch (err) {
+        console.error(err);
+        status.textContent = 'Erreur lors du chargement des données.';
+        const grid = document.getElementById('grid');
+        grid.innerHTML = `<div class="col-span-full bg-red-50 border border-red-200 text-red-700 p-4 rounded-xl">${err.message || err}</div>`;
+      }
+    })();
   </script>
 </body>
 </html>
