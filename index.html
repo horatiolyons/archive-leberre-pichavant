@@ -3,196 +3,197 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Catalogue — Collection Le Berre-Pichavant</title>
-  <meta name="description" content="Catalogue en ligne de la collection de dentelles Le Berre-Pichavant. Recherche, filtres, fiches et galerie images." />
+  <title>Catalogue — Collection Le Berre‑Pichavant</title>
+  <meta name="description" content="Catalogue en ligne de la collection de dentelles Le Berre‑Pichavant. Recherche, filtres, fiches et galerie images." />
+  <!-- Tailwind via CDN (simple déploiement GitHub Pages) -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- PapaParse pour parser le CSV -->
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <style>
-    @media print {
-      .no-print { display: none !important; }
-      .print-only { display: block !important; }
-      body { color: #000; }
-    }
-    .print-only { display: none; }
-    .fade-in { animation: fade .25s ease-in; }
-    @keyframes fade { from {opacity: 0;} to {opacity: 1;} }
-    .thumbs::-webkit-scrollbar { height: 6px; }
-    .thumbs::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
-    :focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+    @media print { .no-print { display:none!important } .print-only { display:block!important } body{color:#000} }
+    .print-only{display:none}
+    .fade-in{animation:fade .25s ease-in}
+    @keyframes fade{from{opacity:0}to{opacity:1}}
+    .thumbs::-webkit-scrollbar{height:6px}
+    .thumbs::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:9999px}
+    :focus-visible{outline:2px solid #2563eb;outline-offset:2px}
   </style>
 </head>
 <body class="min-h-screen bg-slate-50 text-slate-900">
-  <!-- header, filters, grid, detail panel, lightbox unchanged -->
-  <!-- ... (your HTML layout from before goes here) ... -->
+  <header class="sticky top-0 z-30 bg-white/90 backdrop-blur border-b border-slate-200">
+    <div class="max-w-7xl mx-auto px-4 py-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div>
+        <h1 class="text-2xl font-semibold tracking-tight">Collection Le Berre‑Pichavant</h1>
+        <p class="text-slate-600 text-sm">Catalogue de dentelles — données Google Sheets, images Google Drive</p>
+      </div>
+      <div class="text-xs text-slate-500" id="statusLine">Chargement…</div>
+    </div>
+  </header>
+
+  <!-- Contrôles de recherche et filtres -->
+  <section class="bg-white border-b border-slate-200">
+    <div class="max-w-7xl mx-auto px-4 py-4 grid gap-3 md:grid-cols-12">
+      <div class="md:col-span-4">
+        <label for="q" class="block text-xs font-medium text-slate-600">Recherche</label>
+        <input id="q" type="search" placeholder="Rechercher titre, UID, description, étiquettes…" class="w-full mt-1 rounded-xl border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-blue-500" />
+      </div>
+      <div class="md:col-span-8 grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div>
+          <label class="block text-xs font-medium text-slate-600">Utilisation</label>
+          <select id="f-utilisation" class="w-full mt-1 rounded-xl border border-slate-300 px-3 py-2"><option value="">Toutes</option></select>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-600">Mode</label>
+          <select id="f-mode" class="w-full mt-1 rounded-xl border border-slate-300 px-3 py-2"><option value="">Toutes</option></select>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-600">Époque</label>
+          <select id="f-epoque" class="w-full mt-1 rounded-xl border border-slate-300 px-3 py-2"><option value="">Toutes</option></select>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-600">Style</label>
+          <select id="f-style" class="w-full mt-1 rounded-xl border border-slate-300 px-3 py-2"><option value="">Tous</option></select>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-600">Fabrication</label>
+          <select id="f-fabrication" class="w-full mt-1 rounded-xl border border-slate-300 px-3 py-2"><option value="">Toutes</option></select>
+        </div>
+      </div>
+      <div class="md:col-span-12 flex gap-2">
+        <button id="btn-reset" class="no-print inline-flex items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50">Réinitialiser</button>
+        <button id="btn-print" class="no-print inline-flex items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50">Imprimer la fiche ouverte</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Grille des cartes -->
+  <main class="max-w-7xl mx-auto px-4 py-6">
+    <div id="grid" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"></div>
+    <div id="emptyState" class="hidden text-center text-slate-500 py-16">Aucun résultat. Modifiez la recherche ou les filtres.</div>
+  </main>
+
+  <!-- Panneau fiche (plein écran) -->
+  <section id="detailPanel" class="hidden fixed inset-0 z-40 bg-white overflow-y-auto">
+    <div class="max-w-5xl mx-auto px-4 py-6">
+      <div class="flex items-start justify-between gap-4 no-print">
+        <h2 id="detailTitle" class="text-xl font-semibold"></h2>
+        <div class="flex gap-2">
+          <button id="btnCloseDetail" class="rounded-xl border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50">Fermer</button>
+          <button id="btnPrintDetail" class="rounded-xl border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50">Imprimer</button>
+        </div>
+      </div>
+      <div id="detailContent" class="mt-4"></div>
+    </div>
+  </section>
+
+  <!-- Lightbox images -->
+  <div id="lightbox" class="hidden fixed inset-0 z-50 bg-black/90 text-white">
+    <button id="lbClose" class="absolute top-4 right-4 px-3 py-1 rounded bg-white/10 hover:bg-white/20">Fermer</button>
+    <button id="lbPrev" class="absolute left-3 top-1/2 -translate-y-1/2 px-3 py-2 rounded bg-white/10 hover:bg-white/20">&#10094;</button>
+    <button id="lbNext" class="absolute right-3 top-1/2 -translate-y-1/2 px-3 py-2 rounded bg-white/10 hover:bg-white/20">&#10095;</button>
+    <img id="lbImg" alt="" class="max-h-[90vh] max-w-[90vw] object-contain mx-auto my-8 fade-in" />
+    <div id="lbCaption" class="text-center text-sm text-slate-200"></div>
+  </div>
 
   <script>
+    // ---- Config ----
     const DEFAULT_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRlGOWOEaQVNHtM0uiGXtsJMcCJWrHztkeqM1kY2kgdHiwwVH3cpLJqhL7XxEuV1hn6QL5UQ-xMrRcS/pub?output=csv";
     const urlParams = new URLSearchParams(location.search);
     const CSV_URL = urlParams.get('csv') || DEFAULT_CSV_URL;
 
-    const FIELD_ALIASES = { /* your existing alias object here */ };
+    const FIELD_ALIASES = {
+      uid: ["uid","UID","Uid","Identifiant unique","identifiant unique"],
+      driveids: ["driveids","DriveIDs","Drive Ids","Drive IDs","Drive Id","DriveId","Images","Image IDs","Image Ids"],
+      description: ["description","Description"],
+      longdesc: ["description de l'ouvrage","Description de l'ouvrage","Description de l’ouvrage","longdesc"],
+      epoque: ["epoque","Époque","Epoque"],
+      utilisation: ["utilisation","Utilisation"],
+      mode: ["mode","Mode"],
+      style: ["style","Style"],
+      fabrication: ["fabrication","Fabrication"],
+      quantite: ["quantité","Quantité","Quantite"],
+      emplacement: ["emplacement","Emplacement"],
+      client: ["client","Client"],
+      collection: ["collection","Collection"],
+      fileid: ["fileid","FileId","Drive FileId","Drive File ID","Drive File Id","ID","Id"],
+      filename: ["filename","Filename","Fichier","Nom","Name"],
+    };
     const REQUIRED_HEADERS = ["uid"];
 
-    function keyOf(obj, wanted) {
-      const list = FIELD_ALIASES[wanted] || [];
-      return Object.keys(obj).find(k => list.includes(k));
-    }
-    function normalizeRow(row) {
-      const out = {};
-      for (const [k, v] of Object.entries(row || {})) {
-        if (v === undefined || v === null) continue;
-        out[k.trim()] = typeof v === 'string' ? v.trim() : v;
+    function keyOf(obj, wanted){ const list=FIELD_ALIASES[wanted]||[]; return Object.keys(obj).find(k=>list.includes(k)); }
+    function normalizeRow(row){ const out={}; for(const [k,v] of Object.entries(row||{})){ if(v==null) continue; out[k.trim()]=typeof v==='string'?v.trim():v } const lowered={}; Object.keys(out).forEach(k=>lowered[k.toLowerCase()]=out[k]); return lowered; }
+    function splitMulti(value){ if(!value) return []; return String(value).split(/\n|;|,|\|/).map(s=>s.trim()).filter(Boolean); }
+    function normalizeDriveId(s){ if(!s) return null; const str=String(s).trim(); let m=str.match(/[?&]id=([a-zA-Z0-9_-]+)/); if(m) return m[1]; m=str.match(/\/d\/([a-zA-Z0-9_-]+)/); if(m) return m[1]; m=str.match(/^([a-zA-Z0-9_-]{20,})$/); if(m) return m[1]; return null; }
+    function isHeaderLikeRow(r){ const kUID=keyOf(r,'uid'); const uid=(kUID&&r[kUID])?String(r[kUID]).toLowerCase():''; if(uid==='uid'||uid==='identifiant unique') return true; const kTitle=keyOf(r,'description'); const title=(kTitle&&r[kTitle])?String(r[kTitle]).toLowerCase():''; return title==='description'; }
+    function drivePreviewUrl(id){ return `https://drive.google.com/thumbnail?id=${encodeURIComponent(id)}&sz=w1000`; }
+    const textOrDash = v => v?String(v):'—';
+
+    let ITEMS=[]; let IMAGE_MAP={};
+    function showError(e){ const el=document.createElement('div'); el.className='fixed bottom-4 right-4 z-50 max-w-md bg-red-600 text-white text-sm rounded-lg shadow px-3 py-2'; el.textContent='Erreur: '+(e&&e.message?e.message:e); document.body.appendChild(el); }
+
+    async function loadCSV(){ const res=await fetch(CSV_URL,{cache:'no-store'}); if(!res.ok) throw new Error(`Échec de chargement CSV: ${res.status}`); const csvText=await res.text(); return new Promise(resolve=>{ Papa.parse(csvText,{header:true,skipEmptyLines:true,transformHeader:h=>h,complete:r=>resolve(r.data)}); }); }
+    function collectSchemaWarnings(rows){ const first=rows[0]?normalizeRow(rows[0]):{}; return REQUIRED_HEADERS.filter(h=>!keyOf(first,h)); }
+
+    function ingestRows(rows){ const items=new Map(); const images=new Map();
+      for(const raw of rows){ const r=normalizeRow(raw); const kUID=keyOf(r,'uid'); const uid=kUID?r[kUID]:undefined; if(!uid) continue; if(isHeaderLikeRow(r)) continue;
+        const kTitle=keyOf(r,'description'); const kLong=keyOf(r,'longdesc');
+        const kDrive=keyOf(r,'driveids'); const kFileId=keyOf(r,'fileid'); const kFilename=keyOf(r,'filename');
+        const imgArr=[]; if(kDrive&&r[kDrive]){ splitMulti(r[kDrive]).forEach(v=>{ const id=normalizeDriveId(v); if(id) imgArr.push({id,filename:r[kFilename]||undefined}); }); }
+        if(kFileId&&r[kFileId]){ splitMulti(r[kFileId]).forEach(v=>{ const id=normalizeDriveId(v); if(id) imgArr.push({id,filename:r[kFilename]||undefined}); }); }
+        if(imgArr.length){ if(!images.has(uid)) images.set(uid,[]); images.get(uid).push(...imgArr); }
+        if(kTitle||kLong){ const item=items.get(uid)||{uid}; item.title=(kTitle&&r[kTitle])||item.title||uid; item.long=(kLong&&r[kLong])||item.long||''; const kE=keyOf(r,'epoque'); const kU=keyOf(r,'utilisation'); const kM=keyOf(r,'mode'); const kS=keyOf(r,'style'); const kF=keyOf(r,'fabrication'); item.epoque=kE?r[kE]:(item.epoque||''); item.utilisation=kU?r[kU]:(item.utilisation||''); item.mode=kM?r[kM]:(item.mode||''); item.style=kS?r[kS]:(item.style||''); item.fabrication=kF?r[kF]:(item.fabrication||''); const kQ=keyOf(r,'quantite'); const kEm=keyOf(r,'emplacement'); const kC=keyOf(r,'client'); const kCol=keyOf(r,'collection'); item.extra={ Quantité:kQ?r[kQ]:undefined, Emplacement:kEm?r[kEm]:undefined, Client:kC?r[kC]:undefined, Collection:kCol?r[kCol]:undefined }; items.set(uid,item); }
       }
-      const lowered = {};
-      Object.keys(out).forEach(k => lowered[k.toLowerCase()] = out[k]);
-      return lowered;
-    }
-    function splitMulti(value) {
-      if (!value) return [];
-      return String(value)
-        .split(/\n|;|,|\|/) // FIXED regex
-        .map(s => s.trim())
-        .filter(Boolean);
-    }
-    function normalizeDriveId(s) { /* unchanged */ }
-    function isHeaderLikeRow(r) { /* unchanged */ }
-    function drivePreviewUrl(id) { return `https://drive.google.com/thumbnail?id=${encodeURIComponent(id)}&sz=w1000`; }
-    function textOrDash(v) { return v ? String(v) : "—"; }
+      const out=[]; let withImages=0; items.forEach((item,uid)=>{ let arr=images.get(uid)||[]; const seen=new Set(); arr=arr.filter(x=>x&&x.id&&!seen.has(x.id)&&seen.add(x.id)); const pref=fn=>{ const f=(fn||'').toString().toLowerCase(); if(f.endsWith('.webp')) return 0; if(f.endsWith('.jpg')||f.endsWith('.jpeg')) return 1; if(f.endsWith('.png')) return 2; return 3; }; arr.sort((a,b)=>pref(a.filename)-pref(b.filename)); item.images=arr; if(item.images.length) withImages++; out.push(item); });
+      IMAGE_MAP=Object.fromEntries(images); ITEMS=out; return {countRows:rows.length,items:out,withImages}; }
 
-    let ITEMS = [];
-    let IMAGE_MAP = {};
+    function buildFilterOptions(items){ const pick=k=>Array.from(new Set(items.map(it=>(it[k]||'').trim()).filter(Boolean))).sort((a,b)=>a.localeCompare(b,'fr')); fillSelect('f-utilisation',pick('utilisation')); fillSelect('f-mode',pick('mode')); fillSelect('f-epoque',pick('epoque')); fillSelect('f-style',pick('style')); fillSelect('f-fabrication',pick('fabrication')); }
+    function fillSelect(id,values){ const sel=document.getElementById(id); if(!sel) return; const labelAll=id==='f-style'?'Tous':'Toutes'; const current=sel.value; sel.innerHTML=`<option value="">${labelAll}</option>`; values.forEach(v=>{ const opt=document.createElement('option'); opt.value=v; opt.textContent=v; sel.appendChild(opt); }); if(values.includes(current)) sel.value=current; }
 
-    function showError(e) {
-      const el = document.createElement('div');
-      el.className = 'fixed bottom-4 right-4 z-50 max-w-md bg-red-600 text-white text-sm rounded-lg shadow px-3 py-2';
-      el.textContent = 'Erreur: ' + (e && e.message ? e.message : e);
-      document.body.appendChild(el);
-    }
-    async function loadCSV() {
-      const res = await fetch(CSV_URL, { cache: 'no-store' });
-      if (!res.ok) throw new Error(`Échec de chargement CSV: ${res.status}`);
-      const csvText = await res.text();
-      return new Promise((resolve) => {
-        Papa.parse(csvText, {
-          header: true,
-          skipEmptyLines: true,
-          transformHeader: h => h,
-          complete: (results) => resolve(results.data)
-        });
-      });
-    }
-    function collectSchemaWarnings(rows) { /* unchanged */ }
-    function ingestRows(rows) { /* unchanged */ }
-    function buildFilterOptions(items) { /* unchanged */ }
-    function fillSelect(id, values) { /* unchanged */ }
-    function matchFilters(item) { /* unchanged */ }
-    function renderGrid() { /* unchanged */ }
+    function matchFilters(item){ const f={ utilisation:document.getElementById('f-utilisation').value, mode:document.getElementById('f-mode').value, epoque:document.getElementById('f-epoque').value, style:document.getElementById('f-style').value, fabrication:document.getElementById('f-fabrication').value }; for(const [k,v] of Object.entries(f)){ if(v && String(item[k]||'').trim()!==v) return false; } const q=document.getElementById('q').value.trim().toLowerCase(); if(!q) return true; const hay=[item.title,item.long,item.uid,item.utilisation,item.mode,item.epoque,item.style,item.fabrication, Object.values(item.extra||{}).join(' ')].join(' ').toLowerCase(); return hay.includes(q); }
 
-    function openDetail(item) {
-      const panel = document.getElementById('detailPanel');
-      const t = document.getElementById('detailTitle');
-      const c = document.getElementById('detailContent');
-      t.textContent = item.title || item.uid;
-      c.innerHTML = '';
-
-      const scrollY = window.scrollY || document.documentElement.scrollTop;
-      document.body.dataset.scrollLockY = String(scrollY);
-      document.body.style.top = `-${scrollY}px`;
-      document.body.classList.add('overflow-hidden','fixed','w-full');
-
-      const meta = document.createElement('div');
-      meta.className = 'text-sm text-slate-600';
-      meta.textContent = `UID : ${item.uid} · Époque : ${textOrDash(item.epoque)}`;
-      c.appendChild(meta);
-
-      if (item.long) {
-        const p = document.createElement('p');
-        p.className = 'mt-2 text-slate-800';
-        p.textContent = item.long;
-        c.appendChild(p);
-      }
-      const extras = Object.entries(item.extra || {}).filter(([,v]) => v);
-      if (extras.length) {
-        const table = document.createElement('table');
-        table.className = 'mt-4 w-full text-sm border border-slate-200 rounded-xl overflow-hidden';
-        const tbody = document.createElement('tbody');
-        extras.forEach(([k,v]) => {
-          const tr = document.createElement('tr');
-          tr.innerHTML = `<td class="bg-slate-50 px-3 py-2 w-40 border-b border-slate-200">${k}</td><td class="px-3 py-2 border-b border-slate-200">${v}</td>`;
-          tbody.appendChild(tr);
-        });
-        table.appendChild(tbody);
-        c.appendChild(table);
-      }
-      if (item.images && item.images.length) {
-        const wrap = document.createElement('div');
-        wrap.className = 'mt-4 grid grid-cols-2 md:grid-cols-3 gap-3';
-        item.images.forEach((img, idx) => {
-          const im = document.createElement('img');
-          im.src = drivePreviewUrl(img.id);
-          im.alt = img.filename || item.title || item.uid;
-          im.className = 'w-full h-48 object-cover rounded cursor-zoom-in';
-          im.addEventListener('click', () => openLightbox(item, idx));
-          wrap.appendChild(im);
-        });
-        c.appendChild(wrap);
-      }
-      panel.classList.remove('hidden');
-      history.replaceState(null, '', `#${encodeURIComponent(item.uid)}`);
+    function renderGrid(){ const grid=document.getElementById('grid'); grid.innerHTML=''; const results=ITEMS.filter(matchFilters); document.getElementById('emptyState').classList.toggle('hidden',results.length!==0);
+      for(const item of results){ const card=document.createElement('article'); card.className='bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col';
+        const media=document.createElement('div'); media.className='bg-slate-100 aspect-[4/3] relative'; const mainImg=document.createElement('img'); mainImg.alt=item.title||item.uid; mainImg.className='w-full h-full object-cover'; const firstImg=item.images&&item.images[0]?drivePreviewUrl(item.images[0].id):''; if(firstImg){ mainImg.src=firstImg; mainImg.addEventListener('click',()=>openLightbox(item,0)); mainImg.classList.add('cursor-zoom-in'); } else { mainImg.src='data:image/svg+xml;utf8,'+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300"><rect width="400" height="300" fill="#e2e8f0"/><text x="50%" y="50%" text-anchor="middle" fill="#64748b" font-family="sans-serif" font-size="16">Aucune image</text></svg>`); }
+        media.appendChild(mainImg); card.appendChild(media);
+        const content=document.createElement('div'); content.className='p-4 flex-1 flex flex-col gap-2'; const title=document.createElement('h3'); title.className='font-medium leading-snug'; title.textContent=item.title||item.uid; content.appendChild(title);
+        const meta=document.createElement('div'); meta.className='text-xs text-slate-600'; meta.textContent=`UID : ${item.uid} · Époque : ${textOrDash(item.epoque)}`; content.appendChild(meta);
+        if(item.long){ const p=document.createElement('p'); p.className='text-sm text-slate-700 line-clamp-3'; p.textContent=item.long; content.appendChild(p); }
+        const tags=[["Utilisation",item.utilisation],["Mode",item.mode],["Style",item.style],["Fabrication",item.fabrication]].filter(([,v])=>v); if(tags.length){ const tagWrap=document.createElement('div'); tagWrap.className='flex flex-wrap gap-2 mt-1'; tags.forEach(([label,v])=>{ const t=document.createElement('span'); t.className='text-xs bg-slate-100 border border-slate-200 rounded-full px-2 py-0.5'; t.textContent=`${label}: ${v}`; tagWrap.appendChild(t); }); content.appendChild(tagWrap); }
+        if(item.images&&item.images.length>1){ const strip=document.createElement('div'); strip.className='thumbs mt-2 flex gap-2 overflow-x-auto'; item.images.slice(0,10).forEach((img,idx)=>{ const th=document.createElement('img'); th.src=drivePreviewUrl(img.id); th.alt=(img.filename||item.title||item.uid); th.className='h-14 w-20 object-cover rounded cursor-pointer border border-transparent hover:border-blue-500'; th.addEventListener('click',()=>openLightbox(item,idx)); strip.appendChild(th); }); content.appendChild(strip); }
+        const actions=document.createElement('div'); actions.className='mt-3 flex items-center justify-between'; const btnDetail=document.createElement('button'); btnDetail.className='no-print text-sm px-3 py-2 rounded-xl border border-slate-300 hover:bg-slate-50'; btnDetail.textContent='Ouvrir la fiche'; btnDetail.addEventListener('click',()=>openDetail(item)); actions.appendChild(btnDetail); content.appendChild(actions);
+        card.appendChild(content); grid.appendChild(card); }
     }
 
-    document.getElementById('btnCloseDetail').addEventListener('click', () => {
-      document.getElementById('detailPanel').classList.add('hidden');
-      const y = parseInt(document.body.dataset.scrollLockY || '0', 10);
-      document.body.classList.remove('overflow-hidden','fixed','w-full');
-      document.body.style.top = '';
-      window.scrollTo(0, y);
-      history.replaceState(null, '', location.pathname + location.search);
-    });
+    function openDetail(item){ const panel=document.getElementById('detailPanel'); const t=document.getElementById('detailTitle'); const c=document.getElementById('detailContent'); t.textContent=item.title||item.uid; c.innerHTML='';
+      const scrollY=window.scrollY||document.documentElement.scrollTop; document.body.dataset.scrollLockY=String(scrollY); document.body.style.top=`-${scrollY}px`; document.body.classList.add('overflow-hidden','fixed','w-full');
+      const meta=document.createElement('div'); meta.className='text-sm text-slate-600'; meta.textContent=`UID : ${item.uid} · Époque : ${textOrDash(item.epoque)}`; c.appendChild(meta);
+      if(item.long){ const p=document.createElement('p'); p.className='mt-2 text-slate-800'; p.textContent=item.long; c.appendChild(p); }
+      const extras=Object.entries(item.extra||{}).filter(([,v])=>v); if(extras.length){ const table=document.createElement('table'); table.className='mt-4 w-full text-sm border border-slate-200 rounded-xl overflow-hidden'; const tbody=document.createElement('tbody'); extras.forEach(([k,v])=>{ const tr=document.createElement('tr'); tr.innerHTML=`<td class="bg-slate-50 px-3 py-2 w-40 border-b border-slate-200">${k}</td><td class="px-3 py-2 border-b border-slate-200">${v}</td>`; tbody.appendChild(tr); }); table.appendChild(tbody); c.appendChild(table); }
+      if(item.images&&item.images.length){ const wrap=document.createElement('div'); wrap.className='mt-4 grid grid-cols-2 md:grid-cols-3 gap-3'; item.images.forEach((img,idx)=>{ const im=document.createElement('img'); im.src=drivePreviewUrl(img.id); im.alt=img.filename||item.title||item.uid; im.className='w-full h-48 object-cover rounded cursor-zoom-in'; im.addEventListener('click',()=>openLightbox(item,idx)); wrap.appendChild(im); }); c.appendChild(wrap); }
+      panel.classList.remove('hidden'); history.replaceState(null,'',`#${encodeURIComponent(item.uid)}`);
+    }
 
-    let LB = { item: null, index: 0 };
-    function openLightbox(item, index) { /* unchanged */ }
-    function updateLightbox() { /* unchanged */ }
-    function closeLightbox() { /* unchanged */ }
-    document.getElementById('lbClose').addEventListener('click', closeLightbox);
-    document.getElementById('lightbox').addEventListener('click', (e) => { if (e.target.id === 'lightbox') closeLightbox(); });
-    document.getElementById('lbPrev').addEventListener('click', () => { /* unchanged */ });
-    document.getElementById('lbNext').addEventListener('click', () => { /* unchanged */ });
+    // Boutons fiche
+    document.getElementById('btnCloseDetail').addEventListener('click',()=>{ document.getElementById('detailPanel').classList.add('hidden'); const y=parseInt(document.body.dataset.scrollLockY||'0',10); document.body.classList.remove('overflow-hidden','fixed','w-full'); document.body.style.top=''; window.scrollTo(0,y); history.replaceState(null,'',location.pathname+location.search); });
+    document.getElementById('btnPrintDetail').addEventListener('click',()=>window.print());
 
-    ['q','f-utilisation','f-mode','f-epoque','f-style','f-fabrication'].forEach(id => {
-      document.getElementById(id).addEventListener('input', renderGrid);
-      document.getElementById(id).addEventListener('change', renderGrid);
-    });
-    document.getElementById('btn-reset').addEventListener('click', () => {
-      document.getElementById('q').value = '';
-      ['f-utilisation','f-mode','f-epoque','f-style','f-fabrication'].forEach(id => document.getElementById(id).value = '');
-      renderGrid();
-    });
-    document.getElementById('btn-print').addEventListener('click', () => window.print());
+    // Lightbox
+    let LB={item:null,index:0};
+    function openLightbox(item,index){ LB.item=item; LB.index=index||0; updateLightbox(); document.getElementById('lightbox').classList.remove('hidden'); }
+    function updateLightbox(){ const {item,index}=LB; if(!item) return; const img=item.images[index]; if(!img) return; const el=document.getElementById('lbImg'); el.src=drivePreviewUrl(img.id); document.getElementById('lbCaption').textContent=(img.filename||item.title||item.uid)+`  (${index+1}/${item.images.length})`; }
+    function closeLightbox(){ document.getElementById('lightbox').classList.add('hidden'); }
+    document.getElementById('lbClose').addEventListener('click',closeLightbox);
+    document.getElementById('lightbox').addEventListener('click',e=>{ if(e.target.id==='lightbox') closeLightbox(); });
+    document.getElementById('lbPrev').addEventListener('click',()=>{ if(!LB.item) return; LB.index=(LB.index-1+LB.item.images.length)%LB.item.images.length; updateLightbox(); });
+    document.getElementById('lbNext').addEventListener('click',()=>{ if(!LB.item) return; LB.index=(LB.index+1)%LB.item.images.length; updateLightbox(); });
 
-    (async function init() {
-      const status = document.getElementById('statusLine');
-      status.textContent = 'Chargement des données…';
-      try {
-        const rows = await loadCSV();
-        const missing = collectSchemaWarnings(rows);
-        const { countRows, items, withImages } = ingestRows(rows);
-        buildFilterOptions(items);
-        renderGrid();
-        status.textContent = `Chargé ${countRows} lignes · Articles: ${items.length} · Avec images: ${withImages}` + (missing.length ? ` · ⚠︎ Champs requis manquants: ${missing.join(', ')}` : '');
-        const hash = decodeURIComponent(location.hash.slice(1));
-        if (hash) {
-          const found = ITEMS.find(it => String(it.uid) === hash);
-          if (found) openDetail(found);
-        }
-      } catch (err) {
-        console.error(err);
-        showError(err);
-        const status = document.getElementById('statusLine');
-        status.textContent = 'Erreur lors du chargement des données.';
-        document.getElementById('grid').innerHTML = `<div class="col-span-full bg-red-50 border border-red-200 text-red-700 p-4 rounded-xl">${err.message || err}</div>`;
-      }
-    })();
+    // Filtres & actions
+    ['q','f-utilisation','f-mode','f-epoque','f-style','f-fabrication'].forEach(id=>{ const el=document.getElementById(id); if(!el) return; el.addEventListener('input',renderGrid); el.addEventListener('change',renderGrid); });
+    document.getElementById('btn-reset').addEventListener('click',()=>{ const q=document.getElementById('q'); if(q) q.value=''; ['f-utilisation','f-mode','f-epoque','f-style','f-fabrication'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; }); renderGrid(); });
+    document.getElementById('btn-print').addEventListener('click',()=>window.print());
+
+    // Démarrage
+    (async function init(){ const status=document.getElementById('statusLine'); status.textContent='Chargement des données…'; try{ const rows=await loadCSV(); const missing=collectSchemaWarnings(rows); const {countRows,items,withImages}=ingestRows(rows); buildFilterOptions(items); renderGrid(); status.textContent=`Chargé ${countRows} lignes · Articles: ${items.length} · Avec images: ${withImages}`+(missing.length?` · ⚠︎ Champs requis manquants: ${missing.join(', ')}`:''); const hash=decodeURIComponent(location.hash.slice(1)); if(hash){ const found=ITEMS.find(it=>String(it.uid)===hash); if(found) openDetail(found); } } catch(err){ console.error(err); showError(err); status.textContent='Erreur lors du chargement des données.'; document.getElementById('grid').innerHTML=`<div class="col-span-full bg-red-50 border border-red-200 text-red-700 p-4 rounded-xl">${err.message||err}</div>`; } })();
   </script>
 </body>
 </html>
