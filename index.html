@@ -69,30 +69,26 @@
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <script>
     // ===================== CONFIG =====================
-    // 1) Your Google Sheet published CSV URL (already provided)
-    const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRlGOWOEaQVNHtM0uiGXtsJMcCJWrHztkeqM1kY2kgdHiwwVH3cpLJqhL7XxEuV1hn6QL?output=csv";
+    // 1) Your Google Sheet published CSV URL (specific tab)
+    const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRlGOWOEaQVNHtM0uiGXtsJMcCJWrHztkeqM1kY2kgdHiwwVH3cpLJqhL7XxEuV1hn6QL5UQ-xMrRcS/pub?gid=0&single=true&output=csv";
 
     // 2) Google Drive: build a direct-view URL from a file ID
-const driveUrl = (id) => `https://drive.google.com/uc?export=view&id=${id}`;
+    const driveUrl = (id) => `https://drive.google.com/uc?export=view&id=${id}`;
 
-// 2b) Optional: support a simple base-URL + filename approach (fallback)
-// If you later host JPG/WEBP copies at a predictable path, set IMAGE_BASE_URL
-// and the script will try Ref + suffixes (A/B/C/...) + extensions.
-const IMAGE_BASE_URL = ""; // e.g., https://cdn.example.com/lace/
-const IMAGE_PRIORITY_EXTS = ["jpg","jpeg","webp","png"]; // add "heic" last if you must
-const SUFFIXES = ["","A","B","C","D","E"]; // variants per piece
+    // 2b) Optional: filename-based fallback (if you later host on a CDN or in your repo)
+    const IMAGE_BASE_URL = ""; // e.g., https://cdn.example.com/lace/
+    const IMAGE_PRIORITY_EXTS = ["jpg","jpeg","webp","png"]; // add "heic" last only if you must
+    const SUFFIXES = ["","A","B","C","D","E"]; // UID variants per piece
 
-    // 3) Column mapping — update to match your sheet headers exactly
-    // Required: Ref/ID + at least one of Title/Description
-    // For images: create a column named "DriveIDs" with one or more file IDs, separated by semicolons
+    // 3) Column mapping — make sure these match your sheet headers exactly
     const COL = {
-      ref: "UID",              // e.g., 01, 01A
-      title: "Title",
+      ref: "UID",            // e.g., 01, 01A
+      title: "Title",        // change if your header differs (e.g., "Titre")
       description: "Description",
       year: "Year",
       type: "Type",
-      driveIds: "DriveIDs",     // e.g., 1abc;1def;1ghi (IDs from share links)
-      imageUrls: "ImageURLs"     // optional: full image URLs (semicolon/comma separated)
+      driveIds: "DriveIDs",  // semicolon/comma/newline-separated file IDs
+      imageUrls: "ImageURLs" // optional: full image URLs, separated similarly
     };
 
     // ===================== HELPERS =====================
@@ -153,7 +149,7 @@ const SUFFIXES = ["","A","B","C","D","E"]; // variants per piece
       if (!q) return true;
       const hay = [COL.title, COL.description, COL.type, COL.year, COL.ref]
         .map(c => (row[c]||'')+"")
-        .join(' ') 
+        .join(' ')
         .toLowerCase();
       return hay.includes(q.toLowerCase());
     }
@@ -173,14 +169,14 @@ const SUFFIXES = ["","A","B","C","D","E"]; // variants per piece
     function urlsFromRow(row){
       // 1) Drive IDs
       const driveRaw = row[COL.driveIds] || '';
-      const driveIds = String(driveRaw).split(/[,\n;]+/).map(s=>s.trim()).filter(Boolean);
-      if (driveIds.length) {
-        return driveIds.map(driveUrl);
-      }
+      const driveIds = String(driveRaw).split(/[,;\n]+/).map(s=>s.trim()).filter(Boolean);
+      if (driveIds.length) return driveIds.map(driveUrl);
+
       // 2) Direct image URLs
       const urlRaw = row[COL.imageUrls] || '';
-      const urls = String(urlRaw).split(/[,\n;]+/).map(s=>s.trim()).filter(Boolean);
+      const urls = String(urlRaw).split(/[,;\n]+/).map(s=>s.trim()).filter(Boolean);
       if (urls.length) return urls;
+
       // 3) Fallback: build from base URL + Ref + suffixes + extensions
       const ref = row[COL.ref] ? String(row[COL.ref]).trim() : '';
       if (IMAGE_BASE_URL && ref){
@@ -256,6 +252,10 @@ const SUFFIXES = ["","A","B","C","D","E"]; // variants per piece
     }
 
     function boot(rows){
+      // Show HEIC note only if someone forces HEIC to be the first preferred extension
+      const usesHeicFirst = String(IMAGE_PRIORITY_EXTS[0] || '').toLowerCase() === 'heic';
+      document.getElementById('heicNote').style.display = usesHeicFirst ? 'block' : 'none';
+
       hydrateFilters(rows);
       render(rows);
 
@@ -271,7 +271,10 @@ const SUFFIXES = ["","A","B","C","D","E"]; // variants per piece
           if (elCard) elCard.scrollIntoView({behavior:'smooth', block:'start'});
         }
       } catch(e) { /* noop */ }
-      ['q','typeFilter','yearFilter'].forEach(id => document.getElementById(id).addEventListener('input', () => render(rows)));
+
+      ['q','typeFilter','yearFilter'].forEach(id =>
+        document.getElementById(id).addEventListener('input', () => render(rows))
+      );
     }
 
     // ===================== LOAD CSV =====================
