@@ -7,14 +7,14 @@
   <style>
     :root { --gap: 16px; }
     html, body { margin:0; padding:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; color:#111; background:#fafafa; }
-    header { max-width: 1000px; margin: 0 auto; padding: 24px 16px; }
+    header { max-width: 1100px; margin: 0 auto; padding: 24px 16px; }
     h1 { font-size: 1.8rem; margin: 0 0 8px; }
     .sub { color:#555; font-size: .95rem; }
-    .bar { display:flex; gap:var(--gap); flex-wrap:wrap; align-items:center; margin-top: 16px; }
-    input[type="search"], select { padding:10px 12px; border:1px solid #ddd; border-radius:10px; background:#fff; flex: 1 1 220px; }
-    .count { color:#666; font-size:.9rem; margin-left:auto; }
+    .bar { display:grid; grid-template-columns: 1fr repeat(5, minmax(140px, 180px)); gap:var(--gap); align-items:center; margin-top: 16px; }
+    input[type="search"], select { padding:10px 12px; border:1px solid #ddd; border-radius:10px; background:#fff; }
+    .count { grid-column: 1 / -1; color:#666; font-size:.9rem; text-align:right; }
 
-    main { max-width: 1000px; margin: 0 auto; padding: 8px 16px 48px; }
+    main { max-width: 1100px; margin: 0 auto; padding: 8px 16px 48px; }
     .grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(260px,1fr)); gap: var(--gap); }
 
     .card { background:#fff; border:1px solid #eee; border-radius:16px; overflow:hidden; display:flex; flex-direction:column; }
@@ -37,7 +37,7 @@
     .lightbox img { max-width: 92vw; max-height: 92vh; border-radius: 8px; }
     .lightbox .close { position:absolute; top:16px; right:16px; background:#fff; border:none; padding:8px 12px; border-radius:999px; cursor:pointer; }
 
-    footer { max-width: 1000px; margin: 0 auto; padding: 16px; color:#777; font-size:.85rem; }
+    footer { max-width: 1100px; margin: 0 auto; padding: 16px; color:#777; font-size:.85rem; }
     .warn { color:#a45500; background:#fff7ed; border:1px solid #fed7aa; padding:10px 12px; border-radius:10px; }
   </style>
 </head>
@@ -46,30 +46,33 @@
     <h1>Lace Archive</h1>
     <div class="sub">Backed by your Google Sheet + Google Drive images.</div>
     <div class="bar">
-      <input id="q" type="search" placeholder="Search title, description, type, year…" />
-      <select id="typeFilter"><option value="">All types</option></select>
-      <select id="yearFilter"><option value="">All years</option></select>
+      <input id="q" type="search" placeholder="Rechercher (titre, description, tags…)" />
+      <select id="utilFilter"><option value="">Utilisation (toutes)</option></select>
+      <select id="modeFilter"><option value="">Mode (tous)</option></select>
+      <select id="epoFilter"><option value="">Époque (toutes)</option></select>
+      <select id="styleFilter"><option value="">Style (tous)</option></select>
+      <select id="fabFilter"><option value="">Fabrication (toutes)</option></select>
       <div class="count" id="count"></div>
     </div>
     <div id="heicNote" class="warn" style="display:none; margin-top:12px;">
-      Your images are currently in <strong>.heic</strong>. Most browsers cannot display HEIC. Convert to <strong>.jpg</strong> or <strong>.webp</strong> and upload alongside the originals. Because Google Drive uses file IDs, each converted file will have a new ID—list them in the sheet (see "DriveIDs" column guidance below).
+      Vos images d'origine sont en <strong>.heic</strong>. La plupart des navigateurs ne l'affichent pas. Ajoutez des copies <strong>.jpg</strong> ou <strong>.webp</strong> et rafraîchissez l'index d'images dans le tableau.
     </div>
-    <div id="status" class="sub" style="color:#6b7280;margin-top:6px;">Loading data…</div>
+    <div id="status" class="sub" style="color:#6b7280;margin-top:6px;">Chargement des données…</div>
   </header>
 
   <main>
     <div id="grid" class="grid"></div>
-    <div id="empty" class="empty" style="display:none;">No results.</div>
+    <div id="empty" class="empty" style="display:none;">Aucun résultat.</div>
   </main>
 
   <footer>
-    <div>Sheet and image changes appear on reload. Host this file on GitHub Pages.</div>
+    <div>Les modifications du tableau et des images apparaissent au rechargement. Hébergez ce fichier via GitHub Pages.</div>
   </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <script>
     // ===================== CONFIG =====================
-    // 1) Your Google Sheet published CSV URL (specific tab)
+    // 1) Published CSV URL (specific tab)
     const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRlGOWOEaQVNHtM0uiGXtsJMcCJWrHztkeqM1kY2kgdHiwwVH3cpLJqhL7XxEuV1hn6QL5UQ-xMrRcS/pub?gid=0&single=true&output=csv";
 
     // 2) Google Drive: build a direct-view URL from a file ID
@@ -80,16 +83,47 @@
     const IMAGE_PRIORITY_EXTS = ["jpg","jpeg","webp","png"]; // add "heic" last only if you must
     const SUFFIXES = ["","A","B","C","D","E"]; // UID variants per piece
 
-    // 3) Column mapping — make sure these match your sheet headers exactly
+    // 3) Column mapping — EXACT header names from your sheet
     const COL = {
-      ref: "UID",            // e.g., 01, 01A
-      title: "Title",        // change if your header differs (e.g., "Titre")
-      description: "Description",
-      year: "Year",
-      type: "Type",
-      driveIds: "DriveIDs",  // semicolon/comma/newline-separated file IDs
-      imageUrls: "ImageURLs" // optional: full image URLs, separated similarly
+      ref: "UID",                       // e.g., 01, 01A
+      title: "Description",             // short label shown as title
+      description: "Description de l'ouvrage", // longer text
+      year: "Epoque",                   // shown in the meta line
+      type: "Style",                    // optional legacy mapping
+      driveIds: "DriveIDs",             // semicolon/comma/newline-separated file IDs
+      imageUrls: "ImageURLs",           // optional full URLs
+      quantite: "Quantité",
+      emplacement: "Emplacement",
+      utilisation: "Utilisation",
+      mode: "Mode",
+      epoque: "Epoque",
+      style: "Style",
+      fabrication: "fabrication",
+      client: "Client",
+      collection: "Collection"
     };
+
+    // Tag fields we want to show on cards (label : column)
+    const TAG_FIELDS = [
+      ["Quantité", COL.quantite],
+      ["Emplacement", COL.emplacement],
+      ["Utilisation", COL.utilisation],
+      ["Mode", COL.mode],
+      ["Époque", COL.epoque],
+      ["Style", COL.style],
+      ["Fabrication", COL.fabrication],
+      ["Client", COL.client],
+      ["Collection", COL.collection]
+    ];
+
+    // Filter fields and their select IDs
+    const FILTERS = [
+      { id: 'utilFilter', col: COL.utilisation },
+      { id: 'modeFilter', col: COL.mode },
+      { id: 'epoFilter', col: COL.epoque },
+      { id: 'styleFilter', col: COL.style },
+      { id: 'fabFilter', col: COL.fabrication },
+    ];
 
     // ===================== HELPERS =====================
     function el(tag, attrs={}, children=[]) {
@@ -124,44 +158,44 @@
         url.searchParams.set('ref', ref);
         if (navigator.clipboard && navigator.clipboard.writeText){
           navigator.clipboard.writeText(url.toString()).then(()=>{
-            alert('Shareable link copied to clipboard');
-          }).catch(()=>{ window.prompt('Copy link:', url.toString()); });
+            alert('Lien copié dans le presse‑papiers');
+          }).catch(()=>{ window.prompt('Copier le lien :', url.toString()); });
         } else {
-          window.prompt('Copy link:', url.toString());
+          window.prompt('Copier le lien :', url.toString());
         }
       } catch(e){ console.warn(e); }
     }
 
     function hydrateFilters(rows){
-      const typeSet = new Set();
-      const yearSet = new Set();
-      rows.forEach(r => {
-        if (r[COL.type]) typeSet.add(String(r[COL.type]).trim());
-        if (r[COL.year]) yearSet.add(String(r[COL.year]).trim());
+      // Build option sets for each filter
+      FILTERS.forEach(f => {
+        const set = new Set();
+        rows.forEach(r => { if (r[f.col]) set.add(String(r[f.col]).trim()); });
+        const sel = document.getElementById(f.id);
+        [...set].sort((a,b)=>a.localeCompare(b)).forEach(v => sel.appendChild(el('option',{value:v, text:v})));
       });
-      const typeFilter = document.getElementById('typeFilter');
-      const yearFilter = document.getElementById('yearFilter');
-      [...typeSet].sort((a,b)=>a.localeCompare(b)).forEach(v => typeFilter.appendChild(el('option',{value:v, text:v})));
-      [...yearSet].sort((a,b)=>a.localeCompare(b)).forEach(v => yearFilter.appendChild(el('option',{value:v, text:v})));
     }
 
     function matchesQuery(row, q){
       if (!q) return true;
-      const hay = [COL.title, COL.description, COL.type, COL.year, COL.ref]
-        .map(c => (row[c]||'')+"")
-        .join(' ')
-        .toLowerCase();
+      const hayParts = [COL.title, COL.description, COL.ref, COL.year, COL.type, COL.utilisation, COL.mode, COL.epoque, COL.style, COL.fabrication, COL.quantite, COL.emplacement, COL.client, COL.collection];
+      const hay = hayParts.map(c => (row[c]||'')+"").join(' ').toLowerCase();
       return hay.includes(q.toLowerCase());
     }
 
     function applyFilters(rows){
       const q = document.getElementById('q').value.trim();
-      const tf = document.getElementById('typeFilter').value;
-      const yf = document.getElementById('yearFilter').value;
+      // Grab current filter values
+      const active = {};
+      FILTERS.forEach(f => { active[f.col] = document.getElementById(f.id).value; });
+
       return rows.filter(r => {
         if (!matchesQuery(r, q)) return false;
-        if (tf && String(r[COL.type]).trim() !== tf) return false;
-        if (yf && String(r[COL.year]).trim() !== yf) return false;
+        // All dropdown filters must match if set
+        for (const f of FILTERS){
+          const want = document.getElementById(f.id).value;
+          if (want && String(r[f.col]||'').trim() !== want) return false;
+        }
         return true;
       });
     }
@@ -172,12 +206,12 @@
       const driveIds = String(driveRaw).split(/[,;\n]+/).map(s=>s.trim()).filter(Boolean);
       if (driveIds.length) return driveIds.map(driveUrl);
 
-      // 2) Direct image URLs
+      // 2) Direct URLs
       const urlRaw = row[COL.imageUrls] || '';
       const urls = String(urlRaw).split(/[,;\n]+/).map(s=>s.trim()).filter(Boolean);
       if (urls.length) return urls;
 
-      // 3) Fallback: build from base URL + Ref + suffixes + extensions
+      // 3) Fallback: base URL + UID + suffixes + extensions
       const ref = row[COL.ref] ? String(row[COL.ref]).trim() : '';
       if (IMAGE_BASE_URL && ref){
         const candidates = [];
@@ -202,41 +236,44 @@
 
       filtered.forEach(r => {
         const ref = r[COL.ref] || '';
-        const title = r[COL.title] || (ref ? `Item ${ref}` : 'Untitled');
+        const title = r[COL.title] || (ref ? `Item ${ref}` : 'Sans titre');
         const year = r[COL.year] || '';
-        const type = r[COL.type] || '';
         const desc = r[COL.description] || '';
 
         const urls = urlsFromRow(r);
         const gallery = el('div', { class:'gallery' });
 
-        // Main image (first URL if present)
+        // Main image
         const topImg = el('img', { class:'thumb', loading:'lazy', alt:title });
         if (urls.length){
           topImg.src = urls[0];
           topImg.onclick = () => openLightbox(urls[0]);
-          // try-load fallback chain if some candidates 404: attach onerror to advance
-          let i = 0;
-          topImg.onerror = () => {
-            i++; if (i < urls.length) topImg.src = urls[i]; else topImg.onerror = null;
-          };
+          let i = 0; // fallback chain
+          topImg.onerror = () => { i++; if (i < urls.length) topImg.src = urls[i]; else topImg.onerror = null; };
         } else {
-          // No image URLs; show a neutral placeholder banner
-          topImg.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='1200' height='900'><rect width='100%' height='100%' fill='#f3f3f3'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-family='ui-sans-serif,system-ui' font-size='24' fill='#777'>No image listed</text></svg>`)}`;
+          topImg.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='1200' height='900'><rect width='100%' height='100%' fill='#f3f3f3'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-family='ui-sans-serif,system-ui' font-size='24' fill='#777'>Aucune image</text></svg>`)}`;
         }
 
-        // Thumbnails gallery (all URLs)
+        // Thumbnails (all URLs)
         urls.forEach(u => {
           const g = el('img', { loading:'lazy', alt: `${title}`, src: u });
           g.onclick = () => openLightbox(u);
           gallery.appendChild(g);
         });
 
+        // Tags block
+        const tags = TAG_FIELDS
+          .map(([label, col]) => {
+            const v = (r[col]||'').toString().trim();
+            return v ? el('span', { class:'tag' }, [`${label}: ${v}`]) : null;
+          })
+          .filter(Boolean);
+
         const body = el('div', { class:'body' }, [
           el('div', { class:'title', text: title }),
           el('div', { class:'meta', text: [ref, year].filter(Boolean).join(' · ') }),
-          type ? el('div', { class:'tags' }, [ el('span', { class:'tag', text:type }) ]) : null,
-          desc ? el('div', { class:'desc', text: desc }) : null
+          desc ? el('div', { class:'desc', text: desc }) : null,
+          tags.length ? el('div', { class:'tags' }, tags) : null
         ].filter(Boolean));
 
         const card = el('div', { class:'card', 'data-ref': ref }, [
@@ -244,7 +281,7 @@
           body,
           gallery,
           el('div', { class:'body' }, [
-            el('a', { href:'#', class:'meta', onclick:(e)=>{ e.preventDefault(); shareRef(ref); } }, ['Share link'])
+            el('a', { href:'#', class:'meta', onclick:(e)=>{ e.preventDefault(); shareRef(ref); } }, ['Partager le lien'])
           ])
         ]);
         grid.appendChild(card);
@@ -252,7 +289,6 @@
     }
 
     function boot(rows){
-      // Show HEIC note only if someone forces HEIC to be the first preferred extension
       const usesHeicFirst = String(IMAGE_PRIORITY_EXTS[0] || '').toLowerCase() === 'heic';
       document.getElementById('heicNote').style.display = usesHeicFirst ? 'block' : 'none';
 
@@ -272,9 +308,8 @@
         }
       } catch(e) { /* noop */ }
 
-      ['q','typeFilter','yearFilter'].forEach(id =>
-        document.getElementById(id).addEventListener('input', () => render(rows))
-      );
+      ['q','utilFilter','modeFilter','epoFilter','styleFilter','fabFilter']
+        .forEach(id => document.getElementById(id).addEventListener('input', () => render(rows)));
     }
 
     // ===================== LOAD CSV =====================
@@ -285,14 +320,14 @@
       complete: function(res){
         const rows = res.data || [];
         const status = document.getElementById('status');
-        if (status) status.textContent = `Loaded ${rows.length} row${rows.length===1?'':'s'} from sheet.`;
+        if (status) status.textContent = `Lignes chargées : ${rows.length}`;
         boot(rows);
       },
       error: function(err){
         console.error(err);
         const s = document.getElementById('status');
-        if (s) s.textContent = `Failed to load CSV (${err && err.message ? err.message : 'unknown error'}). Check Publish to web + URL.`;
-        document.getElementById('grid').innerHTML = '<div class="empty">Failed to load data. Check your CSV URL / publishing status.</div>';
+        if (s) s.textContent = `Échec du chargement CSV (${err && err.message ? err.message : 'erreur inconnue'}). Vérifiez la publication et l'URL.`;
+        document.getElementById('grid').innerHTML = '<div class="empty">Impossible de charger les données. Vérifiez l\'URL CSV / état de publication.</div>';
       }
     });
   </script>
