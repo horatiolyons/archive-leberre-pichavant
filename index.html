@@ -76,7 +76,8 @@
     const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRlGOWOEaQVNHtM0uiGXtsJMcCJWrHztkeqM1kY2kgdHiwwVH3cpLJqhL7XxEuV1hn6QL5UQ-xMrRcS/pub?gid=0&single=true&output=csv";
 
     // 2) Google Drive: build a direct-view URL from a file ID
-    const driveUrl = (id) => `https://drive.google.com/uc?export=view&id=${id}`;
+    const driveThumb = (id) => `https://drive.google.com/thumbnail?id=${id}&sz=w2000`;
+    const driveDirect = (id) => `https://drive.google.com/uc?export=download&id=${id}`;
 
     // 2b) Optional: filename-based fallback (if you later host on a CDN or in your repo)
     const IMAGE_BASE_URL = ""; // e.g., https://cdn.example.com/lace/
@@ -152,6 +153,20 @@
       lightbox.appendChild(img);
       lightbox.classList.add('open');
     }
+    function toFull(u){
+      try{
+        const uo = new URL(u);
+        if (uo.hostname === 'drive.google.com' && uo.pathname === '/thumbnail'){
+          const id = uo.searchParams.get('id');
+          if (id) return `https://drive.google.com/uc?export=download&id=${id}`;
+        }
+      }catch(e){}
+      return u;
+    });
+      lightbox.querySelectorAll('img').forEach(i => i.remove());
+      lightbox.appendChild(img);
+      lightbox.classList.add('open');
+    }
     function shareRef(ref){
       try{
         const url = new URL(location.href);
@@ -203,12 +218,14 @@
     function urlsFromRow(row){
       // 1) Drive IDs
       const driveRaw = row[COL.driveIds] || '';
-      const driveIds = String(driveRaw).split(/[,;\n]+/).map(s=>s.trim()).filter(Boolean);
-      if (driveIds.length) return driveIds.map(driveUrl);
+      const driveIds = String(driveRaw).split(/[,;
+]+/).map(s=>s.trim()).filter(Boolean);
+      if (driveIds.length) return driveIds.map(driveThumb);
 
       // 2) Direct URLs
       const urlRaw = row[COL.imageUrls] || '';
-      const urls = String(urlRaw).split(/[,;\n]+/).map(s=>s.trim()).filter(Boolean);
+      const urls = String(urlRaw).split(/[,;
+]+/).map(s=>s.trim()).filter(Boolean);
       if (urls.length) return urls;
 
       // 3) Fallback: base URL + UID + suffixes + extensions
@@ -227,6 +244,8 @@
     }
 
     function render(rows){
+      let imagesOk = 0;
+      const statusEl = document.getElementById('status');
       const grid = document.getElementById('grid');
       const empty = document.getElementById('empty');
       grid.innerHTML = '';
@@ -247,7 +266,7 @@
         const topImg = el('img', { class:'thumb', loading:'lazy', alt:title });
         if (urls.length){
           topImg.src = urls[0];
-          topImg.onclick = () => openLightbox(urls[0]);
+          topImg.onclick = () => openLightbox(toFull(urls[0]));
           let i = 0; // fallback chain
           topImg.onerror = () => { i++; if (i < urls.length) topImg.src = urls[i]; else topImg.onerror = null; };
         } else {
@@ -257,7 +276,7 @@
         // Thumbnails (all URLs)
         urls.forEach(u => {
           const g = el('img', { loading:'lazy', alt: `${title}`, src: u });
-          g.onclick = () => openLightbox(u);
+          g.onclick = () => openLightbox(toFull(u));
           gallery.appendChild(g);
         });
 
