@@ -164,7 +164,8 @@
     function splitMulti(value) {
       if (!value) return [];
       return String(value)
-        .split(/\n|;|,|\|/)
+        .split(/
+|;|,|\|/)
         .map(s => s.trim())
         .filter(Boolean);
     }
@@ -300,7 +301,23 @@
       const out = [];
       let withImages = 0;
       items.forEach((item, uid) => {
-        item.images = images.get(uid) || [];
+        // déduplique et ordonne les images (préférence webp/jpg)
+        let arr = images.get(uid) || [];
+        const seen = new Set();
+        arr = arr.filter(x => {
+          if (!x || !x.id) return false;
+          if (seen.has(x.id)) return false;
+          seen.add(x.id); return true;
+        });
+        const pref = (fn) => {
+          const f = (fn || '').toString().toLowerCase();
+          if (f.endsWith('.webp')) return 0;
+          if (f.endsWith('.jpg') || f.endsWith('.jpeg')) return 1;
+          if (f.endsWith('.png')) return 2;
+          return 3;
+        };
+        arr.sort((a,b)=>pref(a.filename)-pref(b.filename));
+        item.images = arr;
         if (item.images.length) withImages++;
         out.push(item);
       });
@@ -457,6 +474,12 @@
       t.textContent = item.title || item.uid;
       c.innerHTML = '';
 
+      // Verrouiller le scroll de la page sous-jacente (évite de perdre la position)
+      const scrollY = window.scrollY || document.documentElement.scrollTop;
+      document.body.dataset.scrollLockY = String(scrollY);
+      document.body.style.top = `-${scrollY}px`;
+      document.body.classList.add('overflow-hidden','fixed','w-full');
+
       // Méta
       const meta = document.createElement('div');
       meta.className = 'text-sm text-slate-600';
@@ -502,10 +525,59 @@
 
       panel.classList.remove('hidden');
       history.replaceState(null, '', `#${encodeURIComponent(item.uid)}`);
+    } · Époque : ${textOrDash(item.epoque)}`;
+      c.appendChild(meta);
+
+      if (item.long) {
+        const p = document.createElement('p');
+        p.className = 'mt-2 text-slate-800';
+        p.textContent = item.long;
+        c.appendChild(p);
+      }
+
+      // Tableau infos supplémentaires
+      const extras = Object.entries(item.extra || {}).filter(([,v]) => v);
+      if (extras.length) {
+        const table = document.createElement('table');
+        table.className = 'mt-4 w-full text-sm border border-slate-200 rounded-xl overflow-hidden';
+        const tbody = document.createElement('tbody');
+        extras.forEach(([k,v]) => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td class="bg-slate-50 px-3 py-2 w-40 border-b border-slate-200">${k}</td><td class="px-3 py-2 border-b border-slate-200">${v}</td>`;
+          tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+        c.appendChild(table);
+      }
+
+      // Galerie grande
+      if (item.images && item.images.length) {
+        const wrap = document.createElement('div');
+        wrap.className = 'mt-4 grid grid-cols-2 md:grid-cols-3 gap-3';
+        item.images.forEach((img, idx) => {
+          const im = document.createElement('img');
+          im.src = drivePreviewUrl(img.id);
+          im.alt = img.filename || item.title || item.uid;
+          im.className = 'w-full h-48 object-cover rounded cursor-zoom-in';
+          im.addEventListener('click', () => openLightbox(item, idx));
+          wrap.appendChild(im);
+        });
+        c.appendChild(wrap);
+      }
+
+      panel.classList.remove('hidden');
+      history.replaceState(null, '', `#${encodeURIComponent(item.uid)}`);
     }
 
     document.getElementById('btnCloseDetail').addEventListener('click', () => {
       document.getElementById('detailPanel').classList.add('hidden');
+      // Déverrouiller le scroll et restaurer la position
+      const y = parseInt(document.body.dataset.scrollLockY || '0', 10);
+      document.body.classList.remove('overflow-hidden','fixed','w-full');
+      document.body.style.top = '';
+      window.scrollTo(0, y);
+      history.replaceState(null, '', location.pathname + location.search);
+    });
       history.replaceState(null, '', location.pathname + location.search);
     });
 
