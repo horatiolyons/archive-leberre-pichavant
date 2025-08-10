@@ -124,8 +124,8 @@
 
     // Champs/étiquettes attendus (tolérance sur la casse et les accents)
     const FIELD_ALIASES = {
-      uid: ["uid", "UID", "Uid"],
-      driveids: ["driveids", "DriveIDs", "Drive Ids", "Drive IDs", "Drive Id", "DriveId", "Images", "Image IDs"],
+      uid: ["uid", "UID", "Uid", "Identifiant unique", "identifiant unique"],
+      driveids: ["driveids", "DriveIDs", "Drive Ids", "Drive IDs", "Drive Id", "DriveId", "Images", "Image IDs", "Image Ids"],
       description: ["description", "Description"],
       longdesc: ["description de l'ouvrage", "Description de l'ouvrage", "Description de l’ouvrage", "longdesc"],
       epoque: ["epoque", "Époque", "Epoque"],
@@ -169,6 +169,33 @@
         .filter(Boolean);
     }
 
+    // Accepte un ID Drive pur ou une URL de partage et renvoie l'ID
+    function normalizeDriveId(s) {
+      if (!s) return null;
+      const str = String(s).trim();
+      let m = str.match(/[?&]id=([a-zA-Z0-9_-]+)/); if (m) return m[1];
+      m = str.match(/\/d\/([a-zA-Z0-9_-]+)/); if (m) return m[1];
+      m = str.match(/^([a-zA-Z0-9_-]{20,})$/); if (m) return m[1];
+      return null; // non reconnu
+    }
+
+    // Certaines publications multi‑onglets remettent une ligne d'en‑tête au milieu
+    function isHeaderLikeRow(r) {
+      const kUID = keyOf(r, 'uid');
+      const uid = kUID ? (r[kUID] || '').toLowerCase() : '';
+      const kTitle = keyOf(r, 'description');
+      const title = kTitle ? (r[kTitle] || '').toLowerCase() : '';
+      const kLong = keyOf(r, 'longdesc');
+      const longd = kLong ? (r[kLong] || '').toLowerCase() : '';
+      const suspects = ["uid", "identifiant unique", "description", "description de l'ouvrage", "description de l’ouvrage"];
+      const hits = [uid, title, longd].filter(v => suspects.includes(v)).length;
+      return hits >= 2; // ressemble fortement à une ligne d'en‑tête
+    }
+
+    function drivePreviewUrl(id) {
+      return `https://drive.google.com/thumbnail?id=${encodeURIComponent(id)}&sz=w1000`;
+    }
+
     function drivePreviewUrl(id) {
       return `https://drive.google.com/uc?export=view&id=${encodeURIComponent(id)}`;
     }
@@ -208,6 +235,7 @@
         const kUID = keyOf(r, 'uid');
         const uid = kUID ? r[kUID] : undefined;
         if (!uid) continue;
+        if (isHeaderLikeRow(r)) continue; // ignorer les fausses lignes d'en‑tête
 
         // Détecter si ligne de données principale (présence de description) ou ligne d'index images
         const kTitle = keyOf(r, 'description');
@@ -219,10 +247,16 @@
         const kFilename = keyOf(r, 'filename');
         const imgArr = [];
         if (kDrive && r[kDrive]) {
-          splitMulti(r[kDrive]).forEach(id => imgArr.push({ id, filename: r[kFilename] || undefined }));
+          splitMulti(r[kDrive]).forEach(raw => {
+            const id = normalizeDriveId(raw);
+            if (id) imgArr.push({ id, filename: r[kFilename] || undefined });
+          });
         }
         if (kFileId && r[kFileId]) {
-          splitMulti(r[kFileId]).forEach(id => imgArr.push({ id, filename: r[kFilename] || undefined }));
+          splitMulti(r[kFileId]).forEach(raw => {
+            const id = normalizeDriveId(raw);
+            if (id) imgArr.push({ id, filename: r[kFilename] || undefined });
+          });
         }
         if (imgArr.length) {
           if (!images.has(uid)) images.set(uid, []);
@@ -257,6 +291,7 @@
           };
           items.set(uid, item);
         }
+      }
       }
 
       // Fusion images -> items
