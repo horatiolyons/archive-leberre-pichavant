@@ -151,7 +151,7 @@
 
     function normalizeRow(row) {
       const out = {};
-      for (const [k, v] of Object.entries(row)) {
+      for (const [k, v] of Object.entries(row || {})) {
         if (v === undefined || v === null) continue;
         out[k.trim()] = typeof v === 'string' ? v.trim() : v;
       }
@@ -179,25 +179,20 @@
       return null; // non reconnu
     }
 
-    // Certaines publications multi‑onglets remettent une ligne d'en‑tête au milieu
+    // Détecter et ignorer une ligne d'en-tête réintroduite au milieu (multi-onglets publiés)
     function isHeaderLikeRow(r) {
       const kUID = keyOf(r, 'uid');
-      const uid = kUID ? (r[kUID] || '').toLowerCase() : '';
+      const uid = (kUID && r[kUID]) ? String(r[kUID]).toLowerCase() : '';
+      if (uid === 'uid' || uid === 'identifiant unique') return true;
       const kTitle = keyOf(r, 'description');
-      const title = kTitle ? (r[kTitle] || '').toLowerCase() : '';
-      const kLong = keyOf(r, 'longdesc');
-      const longd = kLong ? (r[kLong] || '').toLowerCase() : '';
-      const suspects = ["uid", "identifiant unique", "description", "description de l'ouvrage", "description de l’ouvrage"];
-      const hits = [uid, title, longd].filter(v => suspects.includes(v)).length;
-      return hits >= 2; // ressemble fortement à une ligne d'en‑tête
+      const title = (kTitle && r[kTitle]) ? String(r[kTitle]).toLowerCase() : '';
+      if (title === 'description') return true;
+      return false;
     }
 
     function drivePreviewUrl(id) {
+      // thumbnail est souvent plus tolérant que uc?export=view
       return `https://drive.google.com/thumbnail?id=${encodeURIComponent(id)}&sz=w1000`;
-    }
-
-    function drivePreviewUrl(id) {
-      return `https://drive.google.com/uc?export=view&id=${encodeURIComponent(id)}`;
     }
 
     function textOrDash(v) { return v ? String(v) : "—"; }
@@ -205,6 +200,14 @@
     // ---- État global ----
     let ITEMS = []; // objets { uid, title, long, epoque, utilisation, mode, style, fabrication, extra:{...}, images:[{id, filename}] }
     let IMAGE_MAP = {}; // uid -> [{id, filename}]
+
+    // Petit panneau d'erreurs visibles
+    function showError(e) {
+      const el = document.createElement('div');
+      el.className = 'fixed bottom-4 right-4 z-50 max-w-md bg-red-600 text-white text-sm rounded-lg shadow px-3 py-2';
+      el.textContent = 'Erreur: ' + (e && e.message ? e.message : e);
+      document.body.appendChild(el);
+    }
 
     // ---- Chargement ----
     async function loadCSV() {
@@ -247,14 +250,14 @@
         const kFilename = keyOf(r, 'filename');
         const imgArr = [];
         if (kDrive && r[kDrive]) {
-          splitMulti(r[kDrive]).forEach(raw => {
-            const id = normalizeDriveId(raw);
+          splitMulti(r[kDrive]).forEach(rawVal => {
+            const id = normalizeDriveId(rawVal);
             if (id) imgArr.push({ id, filename: r[kFilename] || undefined });
           });
         }
         if (kFileId && r[kFileId]) {
-          splitMulti(r[kFileId]).forEach(raw => {
-            const id = normalizeDriveId(raw);
+          splitMulti(r[kFileId]).forEach(rawVal => {
+            const id = normalizeDriveId(rawVal);
             if (id) imgArr.push({ id, filename: r[kFilename] || undefined });
           });
         }
@@ -292,7 +295,6 @@
           items.set(uid, item);
         }
       }
-      }
 
       // Fusion images -> items
       const out = [];
@@ -319,8 +321,9 @@
 
     function fillSelect(id, values) {
       const sel = document.getElementById(id);
+      const labelAll = id === 'f-style' ? 'Tous' : 'Toutes';
       const current = sel.value;
-      sel.innerHTML = '<option value="">Toutes</option>';
+      sel.innerHTML = `<option value="">${labelAll}</option>`;
       values.forEach(v => {
         const opt = document.createElement('option');
         opt.value = v; opt.textContent = v;
@@ -561,6 +564,8 @@
         }
       } catch (err) {
         console.error(err);
+        showError(err);
+        const status = document.getElementById('statusLine');
         status.textContent = 'Erreur lors du chargement des données.';
         const grid = document.getElementById('grid');
         grid.innerHTML = `<div class="col-span-full bg-red-50 border border-red-200 text-red-700 p-4 rounded-xl">${err.message || err}</div>`;
